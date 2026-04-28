@@ -69,8 +69,8 @@ def create_token(user_id: int, email: str, role: str) -> str:
         "sub": str(user_id),
         "email": email,
         "role": role,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRY_HOURS),
+        "iat": datetime.now(),
+        "exp": datetime.now() + timedelta(hours=TOKEN_EXPIRY_HOURS),
         "jti": secrets.token_urlsafe(8),
     }
     return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
@@ -99,7 +99,7 @@ RATE_LIMIT_WINDOW = timedelta(minutes=15)
 
 def check_rate_limit(ip: str) -> bool:
     """Retourne True si l'IP a le droit de tenter un login."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     attempts = _login_attempts.get(ip, [])
     # Purge les vieilles tentatives
     attempts = [a for a in attempts if now - a < RATE_LIMIT_WINDOW]
@@ -108,7 +108,7 @@ def check_rate_limit(ip: str) -> bool:
 
 
 def record_login_attempt(ip: str) -> None:
-    _login_attempts.setdefault(ip, []).append(datetime.now(timezone.utc))
+    _login_attempts.setdefault(ip, []).append(datetime.now())
 
 
 # ============================================================
@@ -183,5 +183,5 @@ async def authenticate(email: str, password: str, session: AsyncSession):
     if not verify_password(password, user.password_hash):
         return None
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now()
     return user
