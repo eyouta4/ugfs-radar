@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Utilisateurs · UGFS-Radar{% endblock %}
+
+{% block content %}
+<h1>Gestion des utilisateurs</h1>
+<div class="subtitle">Créer, lister et gérer les comptes UGFS-Radar.</div>
+
+<div class="card" style="margin-bottom: 24px;">
+  <h2 style="margin-top: 0;">Créer un nouvel utilisateur</h2>
+  <form method="post" action="/admin/users" autocomplete="off">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #374151;">Email</label>
+        <input type="email" name="email" required style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #374151;">Nom complet</label>
+        <input type="text" name="full_name" required style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #374151;">Mot de passe (≥12 car.)</label>
+        <input type="password" name="password" required minlength="12" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #374151;">Rôle</label>
+        <select name="role" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px;">
+          <option value="analyst">Analyst (lecture + décision)</option>
+          <option value="admin">Admin (tout)</option>
+          <option value="viewer">Viewer (lecture seule)</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Créer l'utilisateur</button>
+  </form>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Email</th>
+      <th>Nom</th>
+      <th>Rôle</th>
+      <th>Statut</th>
+      <th>Créé le</th>
+      <th>Dernier login</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.email }}</td>
+      <td>{{ u.full_name }}</td>
+      <td><span class="badge badge-{{ 'go' if u.role == 'admin' else 'submitted' if u.role == 'analyst' else 'pending' }}">{{ u.role }}</span></td>
+      <td>{% if u.is_active %}<span class="badge badge-go">actif</span>{% else %}<span class="badge badge-no-go">désactivé</span>{% endif %}</td>
+      <td>{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+      <td>{{ u.last_login_at.strftime('%d/%m/%Y %H:%M') if u.last_login_at else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

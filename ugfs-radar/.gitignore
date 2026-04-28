@@ -1,0 +1,50 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === Environnements ===
+venv/
+env/
+.venv/
+ENV/
+
+# === Secrets ===
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Logs / Runs ===
+*.log
+logs/
+runs/
+*.db
+*.sqlite
+
+# === Données générées ===
+output/
+*.xlsx.tmp
+backups/
+
+# === Build ===
+dist/
+build/
+*.tar.gz

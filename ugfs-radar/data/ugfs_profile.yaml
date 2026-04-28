@@ -1,0 +1,204 @@
+# ============================================================
+# UGFS NORTH AFRICA — Profil d'investissement structuré
+# ============================================================
+#
+# Ce fichier est la SOURCE DE VÉRITÉ pour le scoring.
+# Il est dérivé des documents UGFS reçus (cahier des charges,
+# sprint AO, CSV historique). Toute valeur marquée [TO_CONFIRM]
+# doit être validée par le client (voir docs/00_DATA_MISSING_FROM_CLIENT.md).
+#
+# Le scoring final est calculé par pondération de ces critères
+# par le module `analyzer.scoring`. Les poids sont ajustés
+# automatiquement par la boucle d'apprentissage (Module 5).
+#
+# ============================================================
+
+organization:
+  name: "UGFS North Africa"
+  hq: "Tunis, Tunisie"
+  type: "Private Equity / Asset Management"
+
+# === Périmètre d'activité ===
+opportunity_types:
+  # Types d'AO acceptés (du cahier des charges)
+  - asset_management
+  - grants
+  - advisory
+  - mandates
+
+themes:
+  # Thématiques avec pondération relative (somme = 100)
+  green:        50    # [TO_CONFIRM] - Tunisia Green Fund est le pilier dominant dans l'historique
+  blue:         30    # [TO_CONFIRM] - Blue Bond actif
+  generaliste:  20    # [TO_CONFIRM]
+
+geographies:
+  # Géographies cibles, ordonnées par priorité
+  primary:                                       # Score boost +20
+    - Tunisia
+    - Tunisie
+    - Maghreb
+    - Afrique du Nord / North Africa / MENA
+  secondary:                                     # Score boost +10
+    - Afrique sub-saharienne / Sub-Saharan Africa
+    - Afrique de l'Ouest / West Africa
+    - Sénégal
+    - Mauritania
+    - Maroc / Morocco
+    - Algérie / Algeria
+    - Egypte / Egypt
+  europe:                                        # Score neutre (selon synergie)
+    - European Union / EU
+    - France
+    - Belgium
+    - Netherlands
+    - Germany
+    - Denmark
+    - Finland
+  excluded_strict:                              # Score = 0 immédiat si SEULE géo
+    - North America (sauf si éligibilité Afrique)
+    - Latin America
+    - East Asia / Pacific (sauf si éligibilité globale)
+
+ticket_size:
+  # Pas de restriction d'après le sprint UGFS
+  no_restriction: true
+  # Mais bonus pour les tickets dans la "sweet spot"
+  sweet_spot_min_usd: 500_000
+  sweet_spot_max_usd: 50_000_000
+
+languages:
+  preferred: [fr, en]    # [TO_CONFIRM]
+  acceptable: [ar]
+  excluded: []           # On ne rejette aucune langue, on traduit si besoin
+
+# === Véhicules portés actuellement par UGFS ===
+# Toute opportunité matchant un véhicule en cours = boost massif (+25)
+vehicles:
+  - name: "Tunisia Green Fund (TGF)"
+    code: "TGF"
+    focus: "climate / green / renewable energy"
+    target_size_usd: null              # [TO_CONFIRM]
+    status: "active"                   # [TO_CONFIRM]
+    keywords:
+      - tunisia green fund
+      - tgf
+      - climate adaptation
+      - renewable energy tunisia
+      - green bond
+      - mitigation tunisia
+
+  - name: "Blue Bond"
+    code: "BLUE_BOND"
+    focus: "ocean / water / blue economy"
+    target_size_usd: null              # [TO_CONFIRM]
+    status: "active"                   # [TO_CONFIRM]
+    keywords:
+      - blue bond
+      - ocean
+      - blue economy
+      - water resilience
+      - marine
+
+  - name: "Seed of Change"
+    code: "SEED_OF_CHANGE"
+    focus: "agritech / food security / SMEs"
+    target_size_usd: null              # [TO_CONFIRM]
+    status: "active"                   # [TO_CONFIRM]
+    keywords:
+      - seed of change
+      - agritech
+      - agriculture africa
+      - agrifi
+      - food systems
+      - seed funding
+
+  - name: "NEW ERA Fund"
+    code: "NEW_ERA"
+    focus: "venture / innovation / digital"
+    target_size_usd: null              # [TO_CONFIRM]
+    status: "active"                   # [TO_CONFIRM]
+    keywords:
+      - new era
+      - emerging fund manager
+      - venture capital africa
+
+# === Partenaires et co-investisseurs prioritaires ===
+# Toute mention de ces noms = boost de score (+15)
+priority_partners:
+  development_finance:
+    - GIZ
+    - CFYE
+    - AFD
+    - AfDB
+    - IFC
+    - BEI / EIB
+    - Adaptation Fund
+    - GCF / Green Climate Fund
+    - Mitigation Action Facility
+    - Climate KIC
+    - Convergence
+    - SDG Impact Finance Initiative / SIFI
+    - Common Fund for Commodities
+    - ESTDEV
+    - Finnpartnership
+    - Honnold Foundation
+    - Anesvad Foundation
+  partners_seen_in_history:
+    - OSS                   # déjà partenaire (Adaptation Fund)
+    - MSF
+    - WSU                   # vu sur Verdant Capital
+    - Galite Partners
+    - Cibola Partners
+    - Greenshore Capital
+    - Enlight Ventures
+    - Ardian
+    - Molten
+    - Sabou Capital
+    - Verdant Capital
+    - Renew Capital
+    - DRK Foundation
+    - MADICA
+    - Bridger Pennington / Fund Launch Partners
+
+# === Critères de DISQUALIFICATION immédiate (score = 0) ===
+disqualification_rules:
+  - rule: "Géographie strictement hors scope (Asie hors MENA, Amérique du Nord, Amérique Latine)"
+    field: "geography"
+    examples_seen_in_history:
+      - "ESTDEV — financement uniquement Botswana/Kenya/Namibie/Zambie/Tanzanie/Ouganda → UGFS non éligible"
+      - "Visa Grant Program — Canada uniquement"
+  - rule: "Type d'éligibilité ne permet pas un asset manager (ex: 'groupes locaux uniquement')"
+    field: "eligibility"
+    examples_seen_in_history:
+      - "YCJF — exige groupes émergents dirigés par des jeunes, ancrage local"
+      - "Sustainability Open Innovation Challenge — non éligible pour fond"
+  - rule: "Deadline déjà dépassée"
+    field: "deadline"
+    description: "Si deadline < today() → ignore"
+  - rule: "Type 'consultancy firm' (RFP individuel, pas pour fonds)"
+    field: "type"
+    examples_seen_in_history:
+      - "Smart Africa RFP — recrutement de cabinet conseil, pas pour fonds"
+
+# === Pondération du scoring (somme = 100) ===
+scoring_weights:
+  # Ces poids sont initiaux. Ils seront ajustés par la boucle d'apprentissage
+  # à partir des décisions Go/No-Go du client.
+  geography_match:        20
+  theme_match:            20
+  vehicle_match:          25      # le plus important : un AO qui matche un véhicule actif est en or
+  partner_match:          10
+  deadline_feasibility:   10      # est-ce qu'on a le temps de soumettre proprement ?
+  ticket_in_sweet_spot:    5
+  language_match:          5
+  similarity_to_past_go:   5      # ajusté à +10 si très similaire à un Go passé
+
+# === Boucle d'apprentissage ===
+learning:
+  # Combien de feedbacks Go/No-Go avant de recalibrer les poids
+  min_feedbacks_for_recalibration: 5
+  # Méthode : régression logistique simple sur les features extraites par le LLM
+  method: logistic_regression
+  # Fréquence de recalibration (cron dimanche soir)
+  cadence: weekly

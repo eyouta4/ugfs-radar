@@ -1,0 +1,35 @@
+# ============================================================
+# UGFS-Radar — Configuration de déploiement Railway
+# ============================================================
+# Railway détecte automatiquement le Dockerfile dans deploy/.
+# On configure ici 2 services :
+#   - api      : service web FastAPI (healthcheck + ingestion feedback)
+#   - worker   : process scheduler APScheduler (run hebdo + alertes)
+# Les 2 services partagent la même base PostgreSQL (pgvector).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/Dockerfile"
+
+# ============================================================
+# Service 1 — API web
+# ============================================================
+[deploy]
+startCommand = "uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+# ============================================================
+# Service 2 — Worker scheduler (à créer en plus dans Railway UI)
+#
+# Dans la console Railway :
+#   1. Crée un second service depuis le même repo
+#   2. Override la commande :  python -m scripts.scheduler
+#   3. Désactive le healthcheck (pas d'HTTP exposé)
+#   4. Connecte la même DB PostgreSQL (variable DATABASE_URL partagée)
+#
+# Les 2 services tournent 24/7. Le worker exécute le job cron
+# tous les lundis matin (timezone Africa/Tunis).
+# ============================================================

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Exécutions · UGFS-Radar{% endblock %}
+
+{% block content %}
+<h1>Exécutions & audit</h1>
+<div class="subtitle">Historique des runs hebdomadaires et événements de sécurité.</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+  <div class="kpi">
+    <div class="kpi-label">Total opportunités en base</div>
+    <div class="kpi-value" style="color:#0F2A4A;font-size:28px;font-weight:700;">{{ stats.total_opps }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Décidées (Go/No-Go) — calibration</div>
+    <div class="kpi-value" style="color:#16a34a;font-size:28px;font-weight:700;">{{ stats.decided }}</div>
+  </div>
+</div>
+
+<h2>Runs hebdomadaires</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Démarré</th>
+      <th>Statut</th>
+      <th>Collectées</th>
+      <th>Nouvelles</th>
+      <th>Urgentes</th>
+      <th>Email</th>
+      <th>Teams</th>
+      <th>Durée</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+    <tr>
+      <td>{{ r.started_at.strftime('%d/%m/%Y %H:%M') }}</td>
+      <td>
+        {% if r.status == 'OK' %}<span class="badge badge-go">OK</span>
+        {% elif r.status == 'FAILED' %}<span class="badge badge-no-go">FAILED</span>
+        {% else %}<span class="badge badge-pending">{{ r.status or 'RUNNING' }}</span>{% endif %}
+      </td>
+      <td>{{ r.n_collected or 0 }}</td>
+      <td>{{ r.n_new or 0 }}</td>
+      <td>{{ r.n_urgent or 0 }}</td>
+      <td>{{ '✓' if r.email_sent else '—' }}</td>
+      <td>{{ r.teams_alerts_sent or 0 }}</td>
+      <td>
+        {% if r.finished_at and r.started_at %}
+          {{ ((r.finished_at - r.started_at).total_seconds() // 60)|int }}m
+        {% else %}
+          —
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" style="text-align:center;color:#6b7280;padding:24px;">
+      Aucun run encore. Lancez-en un depuis le tableau de bord.
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Événements de sécurité (20 derniers)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Horodatage</th>
+      <th>Utilisateur</th>
+      <th>Action</th>
+      <th>Ressource</th>
+      <th>IP</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in audits %}
+    <tr>
+      <td style="font-family:monospace;font-size:12px;">{{ a.timestamp.strftime('%d/%m %H:%M:%S') }}</td>
+      <td>{{ a.user_email or '—' }}</td>
+      <td>
+        <span class="badge badge-{{ 'go' if 'GO' in a.action and 'NO' not in a.action else 'no-go' if 'FAIL' in a.action or 'NO_GO' in a.action else 'submitted' }}">
+          {{ a.action }}
+        </span>
+      </td>
+      <td>{{ a.resource_type }}{% if a.resource_id %} #{{ a.resource_id }}{% endif %}</td>
+      <td style="font-family:monospace;font-size:12px;color:#6b7280;">{{ a.ip_address or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

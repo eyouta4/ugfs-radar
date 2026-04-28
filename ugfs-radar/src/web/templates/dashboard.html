@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord · UGFS-Radar{% endblock %}
+
+{% block extra_head %}
+<style>
+  .header-row {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
+  }
+  .header-actions { display: flex; gap: 12px; align-items: center; }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .kpi {
+    background: white;
+    border-radius: 8px;
+    padding: 18px 20px;
+    border: 1px solid #e5e7eb;
+  }
+  .kpi-label {
+    color: #6b7280;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .kpi-value {
+    color: #0F2A4A;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .kpi.urgent .kpi-value { color: #dc2626; }
+  .kpi.high .kpi-value { color: #16a34a; }
+  .kpi.pending .kpi-value { color: #ca8a04; }
+
+  .filters {
+    display: flex; gap: 12px; align-items: center;
+    background: white; padding: 14px 18px; border-radius: 8px;
+    border: 1px solid #e5e7eb; margin-bottom: 16px;
+  }
+  .filters label { font-size: 13px; color: #374151; font-weight: 500; }
+  .filters select, .filters input[type="number"] {
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .opp-title { font-weight: 600; color: #0F2A4A; }
+  .opp-meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
+  .opp-meta a { color: #1B4F8C; }
+
+  .decision-buttons {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .decision-buttons button {
+    padding: 5px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: 1px solid #d1d5db;
+    background: white;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+  .decision-buttons button:hover { transform: translateY(-1px); }
+  .decision-buttons .b-go:hover { background: #16a34a; color: white; border-color: #16a34a; }
+  .decision-buttons .b-no:hover { background: #dc2626; color: white; border-color: #dc2626; }
+  .decision-buttons .b-bl:hover { background: #ca8a04; color: white; border-color: #ca8a04; }
+  .decision-buttons .b-sub:hover { background: #6366f1; color: white; border-color: #6366f1; }
+  .decision-buttons .selected { color: white; }
+  .decision-buttons .b-go.selected { background: #16a34a; border-color: #16a34a; }
+  .decision-buttons .b-no.selected { background: #dc2626; border-color: #dc2626; }
+  .decision-buttons .b-bl.selected { background: #ca8a04; border-color: #ca8a04; }
+  .decision-buttons .b-sub.selected { background: #6366f1; border-color: #6366f1; }
+
+  .upload-zone {
+    background: white;
+    border: 2px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .upload-zone:hover { border-color: #1B4F8C; }
+
+  @media (max-width: 1100px) {
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 700px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="header-row">
+  <div>
+    <h1>Tableau de bord</h1>
+    <div class="subtitle">
+      Édition du {{ last_run.started_at.strftime('%d/%m/%Y') if last_run else 'aucun run' }}
+      · {{ user.full_name if user.full_name else user.email }}
+    </div>
+  </div>
+  <div class="header-actions">
+    {% if user.role == 'admin' %}
+    <form method="post" action="/admin/trigger-run" id="trigger-form">
+      <button type="submit" class="btn btn-secondary">⚡ Lancer un run manuel</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="kpi-label">Détectées</div>
+    <div class="kpi-value">{{ stats.total }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Qualifiées (≥50)</div>
+    <div class="kpi-value">{{ stats.qualified }}</div>
+  </div>
+  <div class="kpi high">
+    <div class="kpi-label">Prioritaires (≥70)</div>
+    <div class="kpi-value">{{ stats.high }}</div>
+  </div>
+  <div class="kpi urgent">
+    <div class="kpi-label">⚠️ Urgentes (≤7j)</div>
+    <div class="kpi-value">{{ stats.urgent }}</div>
+  </div>
+  <div class="kpi pending">
+    <div class="kpi-label">À décider</div>
+    <div class="kpi-value">{{ stats.pending }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Décidées</div>
+    <div class="kpi-value">{{ stats.decided }}</div>
+  </div>
+</div>
+
+<div class="upload-zone">
+  <strong style="color: #0F2A4A;">📤 Upload du fichier Excel renvoyé après réunion</strong>
+  <p style="color: #6b7280; font-size: 13px; margin: 8px 0 14px 0;">
+    Charger le fichier UGFS-Radar_*.xlsx avec vos décisions Go/No-Go remplies.
+    L'agent les enregistrera et calibrera son scoring.
+  </p>
+  <form id="upload-form" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx,.xlsm" required style="margin-right: 8px;">
+    <button type="submit" class="btn btn-primary">Importer les décisions</button>
+  </form>
+  <div id="upload-result" style="margin-top: 12px; font-size: 13px;"></div>
+</div>
+
+<form method="get" action="/dashboard" class="filters">
+  <label>Période :</label>
+  <select name="days">
+    <option value="7" {% if filter_days == 7 %}selected{% endif %}>7 derniers jours</option>
+    <option value="14" {% if filter_days == 14 %}selected{% endif %}>14 jours</option>
+    <option value="30" {% if filter_days == 30 %}selected{% endif %}>30 jours</option>
+    <option value="90" {% if filter_days == 90 %}selected{% endif %}>90 jours</option>
+  </select>
+  <label>Score min :</label>
+  <input type="number" name="min_score" value="{{ filter_min_score }}" min="0" max="100" step="10" style="width: 70px;">
+  <button type="submit" class="btn btn-secondary">Filtrer</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 60px;">Score</th>
+      <th>Opportunité</th>
+      <th style="width: 100px;">Deadline</th>
+      <th style="width: 120px;">Véhicule</th>
+      <th style="width: 100px;">Statut</th>
+      <th style="width: 280px;">Décision</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for opp in opportunities %}
+    <tr id="row-{{ opp.id }}">
+      <td>
+        <span class="score {% if opp.score >= 70 %}score-high{% elif opp.score >= 50 %}score-mid{% else %}score-low{% endif %}">
+          {{ opp.score }}
+        </span>
+      </td>
+      <td>
+        <a href="/opportunity/{{ opp.id }}" class="opp-title">{{ opp.title }}</a>
+        <div class="opp-meta">
+          {{ opp.opportunity_type|default('—', true) }} ·
+          {{ (opp.geographies or [])|join(', ') or '—' }}
+          {% if opp.partners_mentioned %}· 🤝 {{ opp.partners_mentioned[:2]|join(', ') }}{% endif %}
+        </div>
+      </td>
+      <td>
+        {% if opp.deadline %}
+          {{ opp.deadline.strftime('%d/%m/%Y') }}
+          {% if opp.is_urgent %}<br><span class="badge badge-urgent">⏱ urgent</span>{% endif %}
+        {% else %}
+          <span style="color:#6b7280;">{{ opp.deadline_text_raw or 'Rolling' }}</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if opp.vehicle_match %}
+          <strong style="color:#15803d;">{{ opp.vehicle_match }}</strong>
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        {% if opp.client_decision == 'GO' %}<span class="badge badge-go">GO</span>
+        {% elif opp.client_decision == 'NO_GO' %}<span class="badge badge-no-go">NO-GO</span>
+        {% elif opp.client_decision == 'BORDERLINE' %}<span class="badge badge-borderline">BORD.</span>
+        {% elif opp.client_decision == 'SUBMITTED' %}<span class="badge badge-submitted">SOUMIS</span>
+        {% else %}<span class="badge badge-pending">à décider</span>
+        {% endif %}
+      </td>
+      <td>
+        <div class="decision-buttons">
+          <button class="b-go {% if opp.client_decision == 'GO' %}selected{% endif %}"
+                  data-id="{{ opp.id }}" data-decision="GO">GO</button>
+          <button class="b-no {% if opp.client_decision == 'NO_GO' %}selected{% endif %}"
+                  data-id="{{ opp.id }}" data-decision="NO_GO">NO-GO</button>
+          <button class="b-bl {% if opp.client_decision == 'BORDERLINE' %}selected{% endif %}"
+                  data-id="{{ opp.id }}" data-decision="BORDERLINE">BORD.</button>
+          <button class="b-sub {% if opp.client_decision == 'SUBMITTED' %}selected{% endif %}"
+                  data-id="{{ opp.id }}" data-decision="SUBMITTED">SOUMIS</button>
+        </div>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="text-align:center;color:#6b7280;padding:32px;">
+      Aucune opportunité dans cette période. Lancez un run ou élargissez le filtre.
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+// === Décisions 1-clic ===
+document.querySelectorAll('.decision-buttons button').forEach(btn => {
+  btn.addEventListener('click', async (e) => {
+    const id = e.target.dataset.id;
+    const decision = e.target.dataset.decision;
+    if (!confirm(`Confirmer la décision « ${decision} » pour cette opportunité ?`)) return;
+
+    const fd = new FormData();
+    fd.append('opportunity_id', id);
+    fd.append('decision', decision);
+
+    e.target.disabled = true;
+    e.target.textContent = '...';
+    try {
+      const r = await fetch('/api/decision', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      // Recharge la page pour mettre à jour les badges
+      window.location.reload();
+    } catch (err) {
+      alert('Erreur : ' + err.message);
+      e.target.disabled = false;
+    }
+  });
+});
+
+// === Upload Excel ===
+document.getElementById('upload-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const result = document.getElementById('upload-result');
+  result.innerHTML = '<span style="color:#6b7280;">⏳ Traitement...</span>';
+  try {
+    const r = await fetch('/api/upload-excel', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:#dc2626;">❌ ${data.detail || 'Erreur'}</span>`;
+    } else {
+      let msg = `<span style="color:#15803d;">✓ ${data.processed} décisions appliquées`;
+      if (data.skipped) msg += `, ${data.skipped} lignes ignorées`;
+      if (data.errors && data.errors.length) msg += `, ${data.errors.length} erreurs`;
+      result.innerHTML = msg + '</span>';
+      setTimeout(() => window.location.reload(), 1500);
+    }
+  } catch (err) {
+    result.innerHTML = `<span style="color:#dc2626;">❌ ${err.message}</span>`;
+  }
+});
+
+// === Confirmation trigger run ===
+const trigForm = document.getElementById('trigger-form');
+if (trigForm) {
+  trigForm.addEventListener('submit', (e) => {
+    if (!confirm('Lancer un run manuel maintenant ? (~3 minutes)')) e.preventDefault();
+  });
+}
+</script>
+{% endblock %}

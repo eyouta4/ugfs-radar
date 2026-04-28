@@ -1,0 +1,36 @@
+name: Database Backup
+
+# Backup quotidien (4h UTC = 5h Tunis) de la base UGFS-Radar
+# Le dump est stocké comme artefact GitHub (90 jours de rétention).
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:    # déclenchement manuel possible
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install pg_dump
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}
+        run: |
+          mkdir -p backups
+          DATE=$(date +%Y-%m-%d)
+          pg_dump --no-owner --no-acl --clean --if-exists \
+            "$DATABASE_URL_SYNC" > "backups/ugfs_radar_$DATE.sql"
+          gzip "backups/ugfs_radar_$DATE.sql"
+          ls -lh backups/
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backups/*.sql.gz
+          retention-days: 90

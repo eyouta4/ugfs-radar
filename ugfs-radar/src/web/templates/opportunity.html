@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}{{ opp.title[:60] }} · UGFS-Radar{% endblock %}
+
+{% block extra_head %}
+<style>
+  .opp-header {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 16px;
+  }
+  .opp-header h1 { margin-bottom: 12px; }
+  .opp-score-line { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .opp-section {
+    background: white;
+    border-radius: 8px;
+    padding: 20px 24px;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 16px;
+  }
+  .opp-section h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #0F2A4A;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .opp-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 8px 24px;
+    font-size: 14px;
+  }
+  .opp-grid dt { color: #6b7280; font-weight: 500; }
+  .opp-grid dd { margin: 0; color: #1f2937; }
+  .breakdown-table { font-size: 13px; }
+  .breakdown-table td { padding: 8px 12px; }
+  .nav-back {
+    display: inline-block;
+    margin-bottom: 16px;
+    color: #1B4F8C;
+    font-size: 13px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/dashboard" class="nav-back">← Retour au tableau de bord</a>
+
+<div class="opp-header">
+  <h1>{{ opp.title }}</h1>
+  <div class="opp-score-line">
+    <span class="score {% if opp.score >= 70 %}score-high{% elif opp.score >= 50 %}score-mid{% else %}score-low{% endif %}" style="font-size: 16px; padding: 6px 14px;">
+      Score {{ opp.score }}/100
+    </span>
+    {% if opp.is_urgent %}<span class="badge badge-urgent">⚠️ URGENT</span>{% endif %}
+    {% if opp.client_decision == 'GO' %}<span class="badge badge-go">GO décidé</span>
+    {% elif opp.client_decision == 'NO_GO' %}<span class="badge badge-no-go">NO-GO décidé</span>
+    {% elif opp.client_decision == 'BORDERLINE' %}<span class="badge badge-borderline">Borderline</span>
+    {% elif opp.client_decision == 'SUBMITTED' %}<span class="badge badge-submitted">Soumis</span>
+    {% endif %}
+    <a href="{{ opp.url }}" target="_blank" rel="noopener" class="btn btn-secondary">↗ Source</a>
+    {% if opp.submission_url %}
+    <a href="{{ opp.submission_url }}" target="_blank" rel="noopener" class="btn btn-primary">📝 Soumettre</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="opp-section">
+  <h3>📋 Informations clés</h3>
+  <dl class="opp-grid">
+    <dt>Type</dt><dd>{{ opp.opportunity_type or '—' }}</dd>
+    <dt>Thème</dt><dd>{{ opp.theme or '—' }}</dd>
+    <dt>Géographies</dt><dd>{{ (opp.geographies or [])|join(', ') or '—' }}</dd>
+    <dt>Secteurs</dt><dd>{{ (opp.sectors or [])|join(', ') or '—' }}</dd>
+    <dt>Deadline</dt><dd>
+      {% if opp.deadline %}{{ opp.deadline.strftime('%d/%m/%Y') }}
+      {% else %}{{ opp.deadline_text_raw or 'Rolling' }}{% endif %}
+    </dd>
+    <dt>Ticket size</dt><dd>{% if opp.ticket_size_usd %}{{ '{:,}'.format(opp.ticket_size_usd) }} USD{% else %}—{% endif %}</dd>
+    <dt>Langues</dt><dd>{{ (opp.languages or [])|join(', ') or '—' }}</dd>
+    <dt>Véhicule UGFS</dt><dd><strong>{{ opp.vehicle_match or 'Aucun' }}</strong></dd>
+    <dt>Partenaires</dt><dd>{{ (opp.partners_mentioned or [])|join(', ') or '—' }}</dd>
+    <dt>Source</dt><dd>{{ opp.source }}</dd>
+  </dl>
+</div>
+
+<div class="opp-section">
+  <h3>📋 Résumé exécutif</h3>
+  <p>{{ opp.summary_executive or 'Pas de résumé.' }}</p>
+</div>
+
+<div class="opp-section">
+  <h3>✅ Pourquoi c'est intéressant</h3>
+  <p>{{ opp.why_interesting or '—' }}</p>
+</div>
+
+<div class="opp-section">
+  <h3>📜 Éligibilité</h3>
+  <p>{{ opp.eligibility_summary or '—' }}</p>
+</div>
+
+<div class="opp-section">
+  <h3>🤖 Recommandation préliminaire IA</h3>
+  <p><strong>{{ opp.preliminary_decision or 'PENDING' }}</strong> — {{ opp.decision_rationale or '—' }}</p>
+</div>
+
+{% if opp.score_breakdown %}
+<div class="opp-section">
+  <h3>📊 Détail du score</h3>
+  <table class="breakdown-table">
+    <tbody>
+      {% for key, val in opp.score_breakdown.items() %}
+        {% if key != '_rationale' %}
+        <tr>
+          <td style="width: 200px;">{{ key|replace('_', ' ')|title }}</td>
+          <td><strong>{{ val }}</strong> pts</td>
+          <td style="color: #6b7280;">
+            {% if opp.score_breakdown.get('_rationale') and opp.score_breakdown['_rationale'].get(key) %}
+              {{ opp.score_breakdown['_rationale'][key] }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if opp.similar_past_opportunities %}
+<div class="opp-section">
+  <h3>🔗 Opportunités historiques similaires</h3>
+  <ul>
+    {% for title in opp.similar_past_opportunities %}
+    <li>{{ title }}</li>
+    {% endfor %}
+  </ul>
+  <p style="color: #6b7280; font-size: 13px;">
+    Similarité maximale : {{ '%.2f' | format(opp.similarity_to_past_go or 0) }}
+  </p>
+</div>
+{% endif %}
+
+<div class="opp-section">
+  <h3>📝 Décision UGFS</h3>
+  <form id="decision-form">
+    <input type="hidden" name="opportunity_id" value="{{ opp.id }}">
+    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+      <button type="button" class="btn btn-go" data-decision="GO">✓ GO</button>
+      <button type="button" class="btn btn-no-go" data-decision="NO_GO">✗ NO-GO</button>
+      <button type="button" class="btn btn-borderline" data-decision="BORDERLINE">≈ Borderline</button>
+      <button type="button" class="btn btn-submitted" data-decision="SUBMITTED">📤 Soumis</button>
+    </div>
+    <textarea name="reason" rows="2" placeholder="Raison (optionnelle)…" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px;">{{ opp.client_reason or '' }}</textarea>
+  </form>
+  {% if opp.client_decided_at %}
+  <p style="color: #6b7280; font-size: 12px; margin-top: 12px;">
+    Dernière décision : {{ opp.client_decided_at.strftime('%d/%m/%Y %H:%M') }}
+  </p>
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('#decision-form button[data-decision]').forEach(btn => {
+  btn.addEventListener('click', async (e) => {
+    const decision = e.target.dataset.decision;
+    if (!confirm(`Confirmer la décision « ${decision} » ?`)) return;
+
+    const fd = new FormData(document.getElementById('decision-form'));
+    fd.append('decision', decision);
+    e.target.disabled = true;
+    try {
+      const r = await fetch('/api/decision', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      window.location.reload();
+    } catch (err) {
+      alert('Erreur : ' + err.message);
+      e.target.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

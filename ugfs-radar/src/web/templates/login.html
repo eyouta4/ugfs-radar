@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Connexion · UGFS-Radar{% endblock %}
+
+{% block extra_head %}
+<style>
+  body {
+    background: linear-gradient(135deg, #0F2A4A 0%, #1B4F8C 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .login-container { width: 100%; max-width: 420px; padding: 24px; }
+  .login-logo {
+    text-align: center;
+    color: white;
+    margin-bottom: 32px;
+  }
+  .login-logo .brand {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .login-logo .brand .accent { color: #4ade80; }
+  .login-logo .tagline {
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+  .login-card {
+    background: white;
+    padding: 32px;
+    border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+  }
+  .login-card h2 {
+    margin: 0 0 24px 0;
+    font-size: 20px;
+    color: #0F2A4A;
+  }
+  .form-group { margin-bottom: 18px; }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+  input[type="email"], input[type="password"] {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border 0.15s;
+  }
+  input:focus {
+    outline: none;
+    border-color: #1B4F8C;
+    box-shadow: 0 0 0 3px rgba(27,79,140,0.1);
+  }
+  .btn-login {
+    width: 100%;
+    padding: 12px;
+    background: #0F2A4A;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.15s;
+  }
+  .btn-login:hover { background: #1B4F8C; }
+  .login-footer {
+    text-align: center;
+    margin-top: 24px;
+    color: rgba(255,255,255,0.6);
+    font-size: 12px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+  <div class="login-logo">
+    <div class="brand">UGFS-<span class="accent">Radar</span></div>
+    <div class="tagline">Veille stratégique automatisée</div>
+  </div>
+
+  <div class="login-card">
+    <h2>Connexion</h2>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" autocomplete="off">
+      <div class="form-group">
+        <label for="email">Adresse email</label>
+        <input type="email" id="email" name="email" required autofocus
+               placeholder="prenom.nom@ugfs-na.com">
+      </div>
+      <div class="form-group">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" required
+               minlength="12" placeholder="••••••••••••">
+      </div>
+      <button type="submit" class="btn-login">Se connecter</button>
+    </form>
+  </div>
+
+  <div class="login-footer">
+    Connexion sécurisée · Chiffrement TLS · Audit complet
+  </div>
+</div>
+{% endblock %}

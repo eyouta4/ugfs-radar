@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>{% block title %}UGFS-Radar{% endblock %}</title>
+  <style>
+    /* Reset + base */
+    *, *::before, *::after { box-sizing: border-box; }
+    body, html { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #f4f6f9;
+      color: #1f2937;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #1B4F8C; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+
+    /* Layout principal */
+    .navbar {
+      background: #0F2A4A;
+      color: white;
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .navbar-brand {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .navbar-brand .accent { color: #4ade80; }
+    .navbar-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .navbar-links a {
+      color: rgba(255,255,255,0.85);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .navbar-links a:hover {
+      background: rgba(255,255,255,0.1);
+      text-decoration: none;
+      color: white;
+    }
+    .navbar-links a.active {
+      background: rgba(255,255,255,0.15);
+      color: white;
+    }
+    .navbar-user {
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .navbar-user form { display: inline; margin: 0; }
+    .navbar-user button {
+      background: transparent;
+      color: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 5px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .navbar-user button:hover { background: rgba(255,255,255,0.1); }
+
+    .container {
+      max-width: 1280px;
+      margin: 24px auto;
+      padding: 0 24px;
+    }
+
+    h1 {
+      color: #0F2A4A;
+      font-size: 28px;
+      margin: 0 0 8px 0;
+    }
+    h1 + .subtitle {
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    h2 {
+      color: #0F2A4A;
+      font-size: 20px;
+      margin: 32px 0 12px 0;
+    }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      border: 1px solid #e5e7eb;
+    }
+
+    /* Boutons */
+    .btn {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #0F2A4A; color: white; }
+    .btn-primary:hover { background: #1B4F8C; }
+    .btn-go { background: #16a34a; color: white; }
+    .btn-go:hover { background: #15803d; }
+    .btn-no-go { background: #dc2626; color: white; }
+    .btn-no-go:hover { background: #b91c1c; }
+    .btn-borderline { background: #ca8a04; color: white; }
+    .btn-borderline:hover { background: #a16207; }
+    .btn-submitted { background: #6366f1; color: white; }
+    .btn-secondary {
+      background: white; color: #374151;
+      border: 1px solid #d1d5db;
+    }
+    .btn-secondary:hover { background: #f9fafb; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    th {
+      background: #0F2A4A;
+      color: white;
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+      vertical-align: top;
+    }
+    tr:hover td { background: #f9fafb; }
+
+    /* Badge score */
+    .score {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .score-high { background: #dcfce7; color: #15803d; }
+    .score-mid { background: #fef3c7; color: #a16207; }
+    .score-low { background: #fee2e2; color: #b91c1c; }
+
+    /* Badges décision */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .badge-go { background: #dcfce7; color: #15803d; }
+    .badge-no-go { background: #fee2e2; color: #b91c1c; }
+    .badge-borderline { background: #fef3c7; color: #a16207; }
+    .badge-submitted { background: #e0e7ff; color: #4338ca; }
+    .badge-pending { background: #f3f4f6; color: #6b7280; }
+    .badge-urgent {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+
+    /* Alerts */
+    .alert {
+      padding: 14px 18px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .alert-error { background: #fef2f2; color: #991b1b; border-left: 4px solid #dc2626; }
+    .alert-success { background: #f0fdf4; color: #15803d; border-left: 4px solid #16a34a; }
+    .alert-info { background: #eff6ff; color: #1e40af; border-left: 4px solid #3b82f6; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 32px 0;
+      color: #9ca3af;
+      font-size: 12px;
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  {% if user %}
+  <nav class="navbar">
+    <div class="navbar-brand">UGFS-<span class="accent">Radar</span></div>
+    <div class="navbar-links">
+      <a href="/dashboard" class="{{ 'active' if request.url.path == '/dashboard' else '' }}">Tableau de bord</a>
+      {% if user.role == 'admin' %}
+      <a href="/admin/runs" class="{{ 'active' if request.url.path.startswith('/admin/runs') else '' }}">Exécutions</a>
+      <a href="/admin/users" class="{{ 'active' if request.url.path.startswith('/admin/users') else '' }}">Utilisateurs</a>
+      {% endif %}
+    </div>
+    <div class="navbar-user">
+      <span>{{ user.email }} · {{ user.role }}</span>
+      <form method="post" action="/logout">
+        <button type="submit">Déconnexion</button>
+      </form>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    UGFS-Radar v1.0 · Veille stratégique automatisée
+  </footer>
+</body>
+</html>
