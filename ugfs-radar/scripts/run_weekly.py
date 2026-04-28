@@ -27,14 +27,14 @@ import asyncio
 import time
 from datetime import date
 
+from src.analyzer.llm_analyzer import analyze_opportunity
 from src.analyzer import (
-    LLMAnalyzer,
     VoyageEmbedder,
     compute_score,
     find_similar_past_go,
 )
 from src.analyzer.embeddings import opportunity_to_embedding_text
-from src.collectors.orchestrator import run_all_collectors, default_collectors
+from src.collectors.orchestrator import default_collectors
 from src.config.logger import get_logger
 from src.config.settings import get_settings
 from src.delivery import (
@@ -53,7 +53,6 @@ MAX_CONCURRENT_LLM = 4         # respecte rate limit Groq (30 RPM)
 
 async def _process_one(
     raw,
-    analyzer: LLMAnalyzer,
     embedder: VoyageEmbedder,
     weights: dict,
     semaphore: asyncio.Semaphore,
@@ -61,7 +60,7 @@ async def _process_one(
     """Pipeline analyze → similarity → score → return ScoredOpportunity ou None."""
     async with semaphore:
         try:
-            analyzed = await analyzer.analyze(raw)
+            analyzed = await analyze_opportunity(raw)
             if analyzed is None:
                 return None, None
         except Exception as e:
@@ -129,7 +128,9 @@ async def main() -> dict:
 
     # 3. Collecte
     collectors = default_collectors()
-    raw_opps = await run_all_collectors(collectors)
+    collectors = default_collectors()
+    from src.collectors.orchestrator import run_all
+    raw_opps = await run_all(collectors)
     logger.info("collection_done", n_raw=len(raw_opps))
 
     # 4. Dédup intra-run
@@ -148,7 +149,7 @@ async def main() -> dict:
         deduped = deduped[:MAX_OPPS_PER_RUN]
 
     # 5. Analyse + scoring en parallèle
-    analyzer = LLMAnalyzer()
+    pass  # no class needed
     embedder = VoyageEmbedder()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
 
@@ -176,7 +177,7 @@ async def main() -> dict:
                 n_new += 1
 
     await embedder.aclose()
-    await analyzer.aclose() if hasattr(analyzer, "aclose") else None
+    pass
 
     logger.info("scoring_done", new=n_new, updated=n_updated)
 
