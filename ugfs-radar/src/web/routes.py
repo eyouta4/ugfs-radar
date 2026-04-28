@@ -282,10 +282,10 @@ async def api_decision(
 # API : upload Excel
 # ============================================================
 
-COL_ID = ALL_OPPS_COLUMNS.index("ID")
-COL_TITLE = ALL_OPPS_COLUMNS.index("Titre")
-COL_DECISION = ALL_OPPS_COLUMNS.index("Décision interne (Go/No-Go)")
-COL_REASON = ALL_OPPS_COLUMNS.index("Raison décision")
+COL_ID = 0
+COL_TITLE = 0
+COL_DECISION = 7
+COL_REASON = 7
 VALID_DECISIONS = {"GO", "NO_GO", "BORDERLINE", "SUBMITTED"}
 
 
