@@ -40,8 +40,7 @@ def _elig_str(o):
     s=getattr(o,"score",0) or 0
     e=getattr(o,"eligibility_summary","") or ""
     base="oui" if s>=50 else "a verifier"
-    if e and e!="-": return base+"
-"+e[:150]
+    if e and e!="-": return base+"\n"+e[:150]
     return base
 
 def _actions_str(o):
@@ -51,19 +50,17 @@ def _actions_str(o):
     d=_days(o)
     parts=[]
     if vm: parts.append(vm)
-    if d is not None and 0<d<=21: parts.append(f"{d}j restants - URGENT")
+    if d is not None and 0<d<=21: parts.append(str(d)+"j restants - URGENT")
     if sc>=70: parts.append("PRIORITAIRE")
     if why: parts.append(why[:120])
-    return "
-".join(parts) if parts else "-"
+    return "\n".join(parts) if parts else "-"
 
 def _resp_str(o):
     dec=getattr(o,"client_decision",None) or ""
     reason=getattr(o,"client_reason",None) or ""
     parts=[dec] if dec else []
     if reason: parts.append(reason[:80])
-    return "
-".join(parts) if parts else ""
+    return "\n".join(parts) if parts else ""
 
 def build_weekly_excel(opportunities,historical=None,output_path=None,run_date=None):
     if run_date is None: run_date=date.today()
@@ -72,7 +69,7 @@ def build_weekly_excel(opportunities,historical=None,output_path=None,run_date=N
     ws.row_dimensions[1].height=8
     ws.merge_cells("A2:E2")
     t=ws["A2"]
-    t.value=f"OPPORTUNITES D APPEL D OFFRES - UGFS-Radar - Edition du {run_date.strftime("%d/%m/%Y")}"
+    t.value="OPPORTUNITES D APPEL D OFFRES - UGFS-Radar - Edition du "+run_date.strftime("%d/%m/%Y")
     t.font=Font(name="Calibri",bold=True,size=13)
     t.alignment=Alignment(horizontal="left",vertical="center")
     ws.row_dimensions[2].height=22
@@ -103,15 +100,15 @@ def build_weekly_excel(opportunities,historical=None,output_path=None,run_date=N
         W(4,_elig_str(opp))
         d=_days(opp)
         ouvert="oui" if (d is None or d>0) else "Cloture"
-        if d is not None and 0<d<=7: ouvert=f"oui URGENT ({d}j)"
+        if d is not None and 0<d<=7: ouvert="oui URGENT ("+str(d)+"j)"
         W(5,ouvert); W(6,_dl_str(opp)); W(7,_actions_str(opp)); W(8,_resp_str(opp))
         cl=max(len(getattr(opp,"eligibility_summary","") or ""),len(getattr(opp,"why_interesting","") or ""))
         ws.row_dimensions[r].height=max(50,min(150,15+cl//3))
     if opps:
         last=DR+len(opps)-1
-        dv=DataValidation(type="list",formula1=""GO,NO_GO,BORDERLINE,SUBMITTED,En cours"",allow_blank=True)
-        ws.add_data_validation(dv); dv.add(f"H{DR}:H{last}")
-        ws.auto_filter.ref=f"A4:H{last}"; ws.freeze_panes="A5"
+        dv=DataValidation(type="list",formula1='"GO,NO_GO,BORDERLINE,SUBMITTED,En cours"',allow_blank=True)
+        ws.add_data_validation(dv); dv.add("H"+str(DR)+":H"+str(last))
+        ws.auto_filter.ref="A4:H"+str(last); ws.freeze_panes="A5"
     for col,w in {"A":35.3,"B":58.9,"C":41.4,"D":27.4,"E":18.6,"F":17.0,"G":34.1,"H":23.7}.items():
         ws.column_dimensions[col].width=w
     buf=io.BytesIO(); wb.save(buf); data=buf.getvalue()

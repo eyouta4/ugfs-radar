@@ -1,111 +1,126 @@
 """
-src/collectors/google_cse.py — Google Custom Search Engine.
-
-Le moteur le plus puissant et le moins coûteux pour la recherche thématique large.
-Free tier : 100 requêtes/jour. On lance ~10-15 requêtes par run hebdo, large marge.
-
-Configuration côté Google :
-1. https://programmablesearchengine.google.com → créer un moteur "tout le web"
-2. Récupérer le `cx` (search engine ID)
-3. https://console.cloud.google.com → activer "Custom Search API" → créer une API key
-4. Coller les deux dans les variables d'env
-
-Les queries sont calibrées sur le profil UGFS (cf data/ugfs_profile.yaml).
+src/collectors/google_cse.py — Collecteur via SerpAPI (remplace Google CSE).
+100 recherches gratuites/mois. Zero configuration Google Cloud requise.
 """
 from __future__ import annotations
-
-from typing import Iterable
-
 import httpx
-
-from src.config import RawOpportunity, SourceKind, get_settings
 from src.config.logger import get_logger
-
-from .base import BaseCollector
+from src.config.settings import get_settings
+from src.config.schemas import RawOpportunity, SourceKind
+from src.collectors.base import BaseCollector
 
 logger = get_logger(__name__)
 
-# Queries par défaut, basées sur le profil UGFS et l'historique observé.
-# Chaque query est un trade-off entre précision (peu de bruit) et rappel (peu de manqués).
-# Le nombre est volontairement limité (free tier = 100 req/jour, on lance 1×/semaine).
-DEFAULT_QUERIES: list[str] = [
-    # Green / climat - proche du Tunisia Green Fund
-    'call for proposals 2026 climate Africa fund',
-    'green climate fund Africa application 2026',
-    'climate adaptation grant North Africa MENA',
-    # Blue / eau / océan
-    'blue economy fund Africa call for proposals',
-    'water resilience grant North Africa 2026',
-    # Asset management / GP
-    'emerging fund manager Africa investment opportunity',
-    'asset management mandate Africa MENA RFP',
-    'private equity co-investment Africa Europe',
-    # Agritech / Seed of Change
-    'agritech grant Africa SME funding 2026',
-    # Mandats / advisory
-    'advisory mandate development finance Africa',
-    'consultancy RFP impact investing Africa',
-    # Synergie EU
-    'Horizon Europe Africa Initiative call',
-    # General development finance
-    'AfDB IFC call for proposals 2026',
+DEFAULT_QUERIES = [
+    "call for proposals 2026 climate fund Africa asset manager",
+    "green climate fund Africa application 2026",
+    "blended finance Africa call 2026",
+    "adaptation fund Africa call for proposals",
+    "AfDB call for proposals fund manager 2026",
+    "GIZ call for proposals Africa 2026",
+    "blue economy fund Mediterranean Africa 2026",
+    "agritech grant Africa SME 2026",
+    "emerging fund manager Africa investment 2026",
+    "Horizon Europe call Africa 2026",
+    "AFD appel projets Afrique 2026",
+    "EU Africa fund manager mandate 2026",
+    "climate resilience grant Africa 2026",
+    "Tunisia investment fund opportunity 2026",
+    "site:linkedin.com call for proposals Africa fund 2026",
+    "site:linkedin.com grant opportunity climate Africa",
+    "site:linkedin.com emerging fund manager Africa",
+    "site:linkedin.com blended finance Africa 2026",
 ]
-
 
 class GoogleCSECollector(BaseCollector):
     name = "google_cse"
     source_kind = SourceKind.GOOGLE_CSE.value
-    rate_limit_min = 0.5
-    rate_limit_max = 1.5
 
-    def __init__(self, queries: Iterable[str] | None = None, results_per_query: int = 5):
+    def __init__(self, queries=None):
         super().__init__()
         self.queries = list(queries) if queries else DEFAULT_QUERIES
-        self.results_per_query = results_per_query
-        self._endpoint = "https://www.googleapis.com/customsearch/v1"
-
-    async def _search_one(self, client: httpx.AsyncClient, query: str) -> list[RawOpportunity]:
-        settings = get_settings()
-        if not (settings.google_cse_api_key and settings.google_cse_id):
-            logger.warning("google_cse_not_configured")
-            return []
-        params = {
-            "key": settings.google_cse_api_key,
-            "cx": settings.google_cse_id,
-            "q": query,
-            "num": min(self.results_per_query, 10),
-            "lr": "lang_fr|lang_en",
-            "dateRestrict": "m6",   # opportunités publiées dans les 6 derniers mois
-        }
-        try:
-            response = await client.get(self._endpoint, params=params)
-            response.raise_for_status()
-            data = response.json()
-        except Exception as exc:
-            logger.warning("google_cse_query_failed", query=query, error=str(exc))
-            return []
-
-        items = data.get("items", [])
-        opps: list[RawOpportunity] = []
-        for item in items:
-            try:
-                opp = RawOpportunity(
-                    title=item.get("title", "")[:500],
-                    url=item.get("link", ""),
-                    source=f"{self.name}::{query[:60]}",
-                    source_kind=SourceKind.GOOGLE_CSE,
-                    raw_text=item.get("snippet", "") + "\n\n" + item.get("title", ""),
-                    snippet=item.get("snippet", ""),
-                )
-                opps.append(opp)
-            except Exception as exc:
-                logger.debug("google_cse_skip_item", error=str(exc), item=str(item)[:200])
-        logger.info("google_cse_query_done", query=query, results=len(opps))
-        return opps
 
     async def collect(self) -> list[RawOpportunity]:
-        results: list[RawOpportunity] = []
-        async with self.http_client() as client:
+        settings = get_settings()
+        
+        # Essaie SerpAPI d'abord
+        serpapi_key = getattr(settings, 'serpapi_key', None) or ''
+        if serpapi_key:
+            return await self._collect_serpapi(serpapi_key)
+        
+        # Fallback : Google CSE classique
+        if not settings.google_cse_api_key or not settings.google_cse_id:
+            logger.warning("google_cse_not_configured")
+            return []
+        return await self._collect_google_cse(settings)
+
+    async def _collect_serpapi(self, api_key: str) -> list[RawOpportunity]:
+        results = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for query in self.queries[:10]:  # Max 10 queries (quota)
+                try:
+                    r = await client.get(
+                        "https://serpapi.com/search",
+                        params={
+                            "q": query,
+                            "api_key": api_key,
+                            "engine": "google",
+                            "num": 5,
+                            "gl": "us",
+                            "hl": "en",
+                        }
+                    )
+                    if r.status_code != 200:
+                        logger.warning("serpapi_failed", status=r.status_code, query=query[:50])
+                        continue
+                    
+                    data = r.json()
+                    organic = data.get("organic_results", [])
+                    for item in organic:
+                        title = item.get("title", "")
+                        url = item.get("link", "")
+                        snippet = item.get("snippet", "")
+                        if not title or not url:
+                            continue
+                        results.append(RawOpportunity(
+                            title=title,
+                            url=url,
+                            source=self.name,
+                            source_kind=SourceKind.GOOGLE_CSE,
+                            raw_text=f"{title}\n{snippet}",
+                        ))
+                    logger.info("serpapi_query_ok", query=query[:50], n=len(organic))
+                except Exception as e:
+                    logger.warning("serpapi_error", error=str(e), query=query[:50])
+        
+        logger.info("collector_done", name=self.name, count=len(results))
+        return results
+
+    async def _collect_google_cse(self, settings) -> list[RawOpportunity]:
+        results = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
             for query in self.queries:
-                results.extend(await self._search_one(client, query))
+                try:
+                    r = await client.get(
+                        "https://www.googleapis.com/customsearch/v1",
+                        params={
+                            "key": settings.google_cse_api_key,
+                            "cx": settings.google_cse_id,
+                            "q": query,
+                            "num": 5,
+                        }
+                    )
+                    if r.status_code != 200:
+                        logger.warning("google_cse_query_failed", error=str(r.status_code), query=query[:50])
+                        continue
+                    for item in r.json().get("items", []):
+                        results.append(RawOpportunity(
+                            title=item.get("title", ""),
+                            url=item.get("link", ""),
+                            source=self.name,
+                            source_kind=SourceKind.GOOGLE_CSE,
+                            raw_text=item.get("snippet", ""),
+                        ))
+                except Exception as e:
+                    logger.warning("google_cse_error", error=str(e))
         return results

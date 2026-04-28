@@ -60,7 +60,7 @@ class LinkedInPublicCollector(BaseCollector):
             ]
         ]
         # On re-utilise le moteur Google CSE
-        cse = GoogleCSECollector(queries=queries, results_per_query=4)
+        cse = GoogleCSECollector(queries=queries)
         opps = await cse.collect()
         # On overwrite la source pour la traçabilité
         for opp in opps:

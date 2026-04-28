@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # === Web search ===
     google_cse_api_key: str = Field(default="")
     google_cse_id: str = Field(default="")
+    serpapi_key: str = Field(default="")
 
     # === Microsoft Teams ===
     teams_tenant_id: str = Field(default="")

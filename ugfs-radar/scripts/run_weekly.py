@@ -154,7 +154,7 @@ async def main() -> dict:
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
 
     tasks = [
-        _process_one(raw, analyzer, embedder, weights, semaphore)
+        _process_one(raw, embedder, weights, semaphore)
         for raw in deduped
     ]
     results = await asyncio.gather(*tasks, return_exceptions=False)
