@@ -31,10 +31,10 @@ logger = get_logger(__name__)
 VALID_DECISIONS = {"GO", "NO_GO", "BORDERLINE", "SUBMITTED"}
 
 # Map nom de colonne → index (basé sur ALL_OPPS_COLUMNS de excel_builder.py)
-COL_ID = ALL_OPPS_COLUMNS.index("ID")
-COL_TITLE = ALL_OPPS_COLUMNS.index("Titre")
-COL_DECISION = ALL_OPPS_COLUMNS.index("Décision interne (Go/No-Go)")
-COL_REASON = ALL_OPPS_COLUMNS.index("Raison décision")
+COL_ID = 0  # Opportunite (colonne A)
+COL_TITLE = 0  # Opportunite
+COL_DECISION = 7  # Responsable / Decision UGFS (colonne H)
+COL_REASON = 7  # meme colonne
 
 
 def _check_token(token: str | None) -> None:
