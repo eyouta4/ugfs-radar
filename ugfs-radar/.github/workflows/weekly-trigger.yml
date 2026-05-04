@@ -1,0 +1,47 @@
+name: Weekly Run — Monday 7h Tunis
+
+# Déclenche le run hebdomadaire UGFS-Radar chaque lundi à 6h UTC (= 7h Tunis UTC+1).
+# Contournement fiable du cron Railway qui peut être instable.
+#
+# Secrets GitHub requis :
+#   UGFS_API_URL      : URL du service API Railway, ex. https://ugfs-radar-api.up.railway.app
+#   API_FEEDBACK_TOKEN: même valeur que la variable Railway API_FEEDBACK_TOKEN
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # lundi 6h UTC = 7h Tunis (UTC+1 hiver / UTC+2 été → ajuster si besoin)
+  workflow_dispatch:        # déclenchement manuel possible depuis l'UI GitHub
+
+jobs:
+  trigger-weekly:
+    name: Trigger UGFS-Radar weekly run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger via API
+        env:
+          UGFS_API_URL: ${{ secrets.UGFS_API_URL }}
+          API_FEEDBACK_TOKEN: ${{ secrets.API_FEEDBACK_TOKEN }}
+        run: |
+          set -e
+          echo "Triggering UGFS-Radar weekly run..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${UGFS_API_URL}/api/feedback/trigger-weekly" \
+            -H "X-Trigger-Token: ${API_FEEDBACK_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --retry 3 \
+            --retry-delay 10 \
+            --max-time 30)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response: $BODY"
+          echo "HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: API returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "Weekly run triggered successfully."

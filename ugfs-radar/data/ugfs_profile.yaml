@@ -123,6 +123,19 @@ vehicles:
       - emerging fund manager
       - venture capital africa
 
+  - name: "Musanada Fund"
+    code: "MUSANADA"
+    focus: "infrastructure / public services / social housing"
+    target_size_usd: null
+    status: "active"
+    keywords:
+      - musanada
+      - infrastructure fund
+      - social infrastructure
+      - public infrastructure africa
+      - housing fund
+      - urban development fund
+
 # === Partenaires et co-investisseurs prioritaires ===
 # Toute mention de ces noms = boost de score (+15)
 priority_partners:

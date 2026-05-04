@@ -34,8 +34,9 @@ async def weekly_job():
 
 
 async def daily_urgent_check():
-    """Vérifie quotidiennement les nouveaux urgents et envoie alerte Teams."""
+    """Vérifie quotidiennement les urgents et envoie alertes Teams + email deadline."""
     from src.delivery import send_urgent_alerts
+    from src.delivery.email_sender import send_urgent_deadline_email
     from src.storage.database import session_scope
     from src.storage.repository import OpportunityRepo
     try:
@@ -43,8 +44,21 @@ async def daily_urgent_check():
             repo = OpportunityRepo(session)
             urgent = await repo.list_urgent_unprocessed()
         if urgent:
-            results = await send_urgent_alerts(list(urgent))
-            logger.info("daily_urgent_alerts_sent", n=len(results))
+            urgent_list = list(urgent)
+            # Alerte Teams
+            try:
+                teams_results = await send_urgent_alerts(urgent_list)
+                logger.info("daily_urgent_teams_sent", n=len(teams_results))
+            except Exception as e:
+                logger.warning("daily_urgent_teams_failed", error=str(e))
+            # Email deadline 7 jours
+            try:
+                await send_urgent_deadline_email(urgent_list)
+                logger.info("daily_urgent_email_sent", n=len(urgent_list))
+            except Exception as e:
+                logger.warning("daily_urgent_email_failed", error=str(e))
+        else:
+            logger.info("daily_urgent_check_no_urgents")
     except Exception as e:
         logger.exception("daily_urgent_check_failed", error=str(e))
 

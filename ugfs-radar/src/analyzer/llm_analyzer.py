@@ -1,13 +1,20 @@
 """
-src/analyzer/llm_analyzer.py — Analyse LLM d'une opportunité brute.
+src/analyzer/llm_analyzer.py — Analyse LLM d'une opportunité brute (chain-of-thought).
 
-On utilise Groq (Llama 3.3 70B, gratuit) pour produire un AnalyzedOpportunity
-structuré à partir d'un RawOpportunity. Le prompt est précisément calibré sur
-le profil UGFS (chargé depuis ugfs_profile.yaml).
+Architecture CoT (Chain-of-Thought) :
+  1. Le LLM raisonne d'abord en 3 étapes explicites avant de structurer le JSON
+     - Étape 1 : admissibilité (disqualification ?)
+     - Étape 2 : alignement UGFS (thème, véhicule, géo, partenaires)
+     - Étape 3 : recommandation (GO / BORDERLINE / NO_GO + justification)
+  2. Le raisonnement est capturé dans `analyst_reasoning` pour auditabilité
+  3. Le JSON est ensuite extrait de ce raisonnement → meilleure cohérence
 
-Le LLM est forcé en mode JSON strict via response_format={"type": "json_object"}.
-On valide ensuite le JSON via Pydantic. Si le JSON est invalide, on retry une fois
-avec un message d'erreur explicite, sinon on log et on skip.
+Pourquoi CoT vs extraction directe ?
+  - Le LLM "think before he answers" → décisions plus cohérentes
+  - On peut auditer le raisonnement de l'agent (Étape 1/2/3 visibles)
+  - Réduit les faux positifs : le LLM doit justifier GO avant de l'émettre
+  - Compatible avec le scoring déterministe qui suit (LLM extrait des faits,
+    on calcule le score nous-mêmes)
 """
 from __future__ import annotations
 
@@ -30,16 +37,17 @@ logger = get_logger(__name__)
 
 
 # ============================================================
-# Construction du prompt
+# Construction du prompt chain-of-thought
 # ============================================================
 
 def _build_system_prompt() -> str:
-    """Prompt système : positionne le LLM comme analyste UGFS senior."""
+    """Prompt système CoT : l'analyste UGFS raisonne avant de structurer."""
     profile = get_ugfs_profile()
 
     vehicles = profile["vehicles"]
     vehicle_lines = "\n".join(
-        f'  - {v["name"]} (code: {v["code"]}) — focus: {v["focus"]} — keywords: {", ".join(v["keywords"][:4])}'
+        f'  - {v["name"]} (code: {v["code"]}) — focus: {v["focus"]}'
+        f' — mots-clés: {", ".join(v["keywords"][:5])}'
         for v in vehicles
     )
 
@@ -48,84 +56,113 @@ def _build_system_prompt() -> str:
         partners["development_finance"][:15] + partners["partners_seen_in_history"][:10]
     )
 
-    dq_rules = "\n".join(f'  - {r["rule"]}' for r in profile["disqualification_rules"])
+    dq_rules = "\n".join(f'  • {r["rule"]}' for r in profile["disqualification_rules"])
 
-    return f"""Tu es un analyste senior chez **UGFS North Africa**, société de Private Equity basée à Tunis.
+    geo_primary = ", ".join(profile["geographies"].get("primary", []))
+    geo_secondary = ", ".join(profile["geographies"].get("secondary", [])[:6])
+    geo_europe = ", ".join(profile["geographies"].get("europe", [])[:5])
 
-UGFS investit dans :
-- **Types** : Asset Management, Grants, Advisory, Mandats
-- **Thématiques** : Green (priorité {profile['themes']['green']}%), Blue ({profile['themes']['blue']}%), Généraliste ({profile['themes']['generaliste']}%)
-- **Géographies** :
-  - Primaires (boost) : {", ".join(profile['geographies']['primary'])}
-  - Secondaires : {", ".join(profile['geographies']['secondary'])}
-  - Europe : selon synergie de co-investissement
-- **Pas de restriction de ticket**
+    return f"""Tu es un analyste senior chez **UGFS North Africa**, société de Private Equity basée à Tunis, spécialisée en finance climatique et impact investing.
 
-**Véhicules actuellement portés par UGFS :**
+═══════════════════════════════════════════════════════
+PROFIL UGFS
+═══════════════════════════════════════════════════════
+**Types acceptés :** asset management, grants, advisory, mandats
+**Thématiques :** green (50% priorité), blue (30%), généraliste (20%)
+
+**Géographies :**
+  → Primaires (fort intérêt) : {geo_primary}
+  → Secondaires (intérêt) : {geo_secondary}
+  → Europe (synergie co-investissement) : {geo_europe}
+  → HORS SCOPE : North America, Latin America, East Asia/Pacific
+
+**Véhicules actifs UGFS :**
 {vehicle_lines}
 
-**Partenaires/co-investisseurs prioritaires :**
-{partners_flat}
+**Partenaires prioritaires :** {partners_flat}
 
 **Critères de DISQUALIFICATION immédiate :**
 {dq_rules}
 
-Ton rôle : pour chaque opportunité (appel d'offres, fund of funds, grant, RFP, etc.) que je te transmets,
-tu produis une analyse structurée en **JSON STRICT** au format demandé. Tu ne réponds QUE le JSON,
-sans markdown, sans préface, sans suffixe.
+═══════════════════════════════════════════════════════
+MÉTHODE D'ANALYSE OBLIGATOIRE — CHAIN OF THOUGHT
+═══════════════════════════════════════════════════════
 
-Tu es exigeant : si l'opportunité ne matche clairement aucun critère UGFS, tu mets `preliminary_decision: "NO_GO"`.
-Si elle matche un véhicule actif (TGF, Blue Bond, Seed of Change, NEW ERA), tu mets `preliminary_decision: "GO"`.
-Sinon tu utilises `BORDERLINE` ou `PENDING`.
+Tu DOIS raisonner en 3 étapes avant de produire le JSON :
+
+**ÉTAPE 1 — ADMISSIBILITÉ (2-4 phrases)**
+Pose-toi ces questions :
+  • La deadline est-elle déjà passée (vs aujourd'hui) ?
+  • La géographie est-elle 100% hors scope UGFS (Asie hors MENA, Amériques) ?
+  • L'éligibilité exclut-elle explicitement les fonds / asset managers ?
+  • Est-ce un RFP pour cabinet de conseil individuel ?
+  → Conclure : "Admissible" ou "DISQUALIFIÉ : [raison]"
+
+**ÉTAPE 2 — ALIGNEMENT UGFS (4-6 phrases)**
+  • Thème : green (énergie, climat, CO2), blue (eau, océan, maritime), généraliste ?
+  • Véhicule UGFS le plus adapté : TGF / Blue Bond / Seed of Change / NEW ERA / Musanada ?
+  • Géographie : primaire (Tunisie/Maghreb/MENA), secondaire (SSA), Europe, ou autre ?
+  • Partenaires mentionnés parmi nos prioritaires ?
+  • Ticket size si précisé — dans la sweet spot (500K-50M USD) ?
+
+**ÉTAPE 3 — RECOMMANDATION (1-3 phrases)**
+  → GO si : véhicule UGFS clair ET géographie primaire/secondaire ET deadline réaliste
+  → BORDERLINE si : alignement partiel, mérite exploration, mais incertitudes
+  → NO_GO si : DQ ou trop éloigné du profil UGFS
+  → Justifier brièvement la recommandation
+
+Ce raisonnement va dans le champ `analyst_reasoning` du JSON.
+Après ce raisonnement, produis le JSON STRICT. Réponds UNIQUEMENT avec le JSON, sans markdown.
 """
 
 
 def _build_user_prompt(raw: RawOpportunity) -> str:
-    """Prompt utilisateur : l'opportunité + le format de sortie attendu."""
+    """Prompt utilisateur : opportunité + schéma JSON avec analyst_reasoning."""
     today = date.today().isoformat()
 
     schema_block = """{
-  "title": "string (titre normalisé)",
-  "summary_executive": "string (3-4 phrases en français, ce que c'est, qui le porte, pour qui)",
+  "analyst_reasoning": "string — TON RAISONNEMENT en 3 étapes (Étape 1 Admissibilité → Étape 2 Alignement → Étape 3 Recommandation). Minimum 80 mots.",
+  "title": "string (titre normalisé, en français de préférence)",
+  "summary_executive": "string (3-4 phrases en français : ce que c'est, qui le porte, pour qui, montant si connu)",
   "opportunity_type": "asset_management" | "grant" | "advisory" | "mandate" | "unknown",
   "theme": "green" | "blue" | "generaliste" | "unknown",
-  "geographies": ["liste des pays/régions cibles"],
-  "sectors": ["secteurs spécifiques: énergie, agriculture, santé, etc."],
-  "eligibility_summary": "string (qui peut postuler, conditions clés)",
+  "geographies": ["liste des pays/régions cibles de l'AO"],
+  "sectors": ["secteurs spécifiques : énergie solaire, agriculture, santé, numérique, eau..."],
+  "eligibility_summary": "string (qui peut postuler, critères clés d'éligibilité)",
   "deadline": "YYYY-MM-DD ou null si rolling/non précisée",
-  "deadline_text_raw": "texte brut original",
-  "ticket_size_usd": null ou nombre entier (si mentionné, en USD),
-  "languages": ["fr","en","ar",...],
-  "why_interesting": "string (2-3 raisons concrètes pour UGFS)",
+  "deadline_text_raw": "texte brut original de la deadline",
+  "ticket_size_usd": null | integer (montant en USD si mentionné, sinon null),
+  "languages": ["fr", "en", "ar"... — langues de soumission acceptées],
+  "why_interesting": "string (2-3 raisons concrètes et spécifiques pour UGFS)",
   "preliminary_decision": "GO" | "NO_GO" | "BORDERLINE" | "PENDING",
-  "decision_rationale": "string (1-2 phrases sur le pourquoi de la reco)",
-  "partners_mentioned": ["noms d'institutions/partenaires connus mentionnés"],
-  "vehicle_match": "TGF" | "BLUE_BOND" | "SEED_OF_CHANGE" | "NEW_ERA" | null,
-  "submission_url": "URL directe vers le formulaire de soumission ou null"
+  "decision_rationale": "string (synthèse en 1-2 phrases de ta recommandation)",
+  "partners_mentioned": ["noms institutions/partenaires mentionnés dans le texte"],
+  "vehicle_match": "TGF" | "BLUE_BOND" | "SEED_OF_CHANGE" | "NEW_ERA" | "MUSANADA" | null,
+  "submission_url": "URL directe vers formulaire de soumission ou null"
 }"""
 
-    return f"""Analyse cette opportunité (date d'aujourd'hui : {today}) et retourne le JSON conforme au schéma ci-dessous.
+    return f"""Analyse cette opportunité (date d'aujourd'hui : **{today}**).
 
-# Opportunité
+Commence par ton raisonnement en 3 étapes, puis retourne le JSON conforme au schéma.
+
+━━━ OPPORTUNITÉ ━━━
 
 **Titre :** {raw.title}
-
 **URL :** {raw.url}
-
 **Source :** {raw.source}
+**Hint deadline :** {raw.deadline_hint or "non précisé"}
 
 **Texte récupéré :**
 \"\"\"
 {raw.raw_text[:4000]}
 \"\"\"
 
-**Hint deadline (si fourni) :** {raw.deadline_hint or "rien"}
-
-# Schéma JSON attendu (STRICT)
+━━━ FORMAT DE SORTIE JSON STRICT ━━━
 
 {schema_block}
 
-Réponds uniquement avec le JSON valide, rien d'autre.
+Rappel : commence par `"analyst_reasoning"` avec ton raisonnement CoT complet (étapes 1-2-3).
+Réponds uniquement avec le JSON valide, sans aucun texte avant ou après.
 """
 
 
@@ -146,8 +183,8 @@ def _get_client() -> AsyncGroq:
     return _client
 
 
-async def _call_llm(messages: list[dict], temperature: float = 0.1) -> str:
-    """Appel LLM avec retry."""
+async def _call_llm(messages: list[dict], temperature: float = 0.15) -> str:
+    """Appel LLM avec retry exponentiel."""
     settings = get_settings()
     async for attempt in AsyncRetrying(
         stop=stop_after_attempt(3),
@@ -160,7 +197,7 @@ async def _call_llm(messages: list[dict], temperature: float = 0.1) -> str:
                 model=settings.groq_model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=1500,
+                max_tokens=2500,          # augmenté pour le raisonnement CoT
                 response_format={"type": "json_object"},
             )
             return response.choices[0].message.content or "{}"
@@ -173,9 +210,9 @@ async def _call_llm(messages: list[dict], temperature: float = 0.1) -> str:
 
 async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None:
     """
-    Analyse une opportunité brute via le LLM.
+    Analyse une opportunité brute via le LLM (chain-of-thought).
 
-    Retourne un AnalyzedOpportunity validé, ou None si l'analyse a échoué.
+    Retourne un AnalyzedOpportunity validé (avec raisonnement CoT), ou None si échec.
     """
     system = _build_system_prompt()
     user = _build_user_prompt(raw)
@@ -194,10 +231,13 @@ async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError as exc:
-        logger.warning("llm_json_invalid", title=raw.title[:60], error=str(exc), raw=raw_json[:200])
+        logger.warning("llm_json_invalid", title=raw.title[:60], error=str(exc), raw=raw_json[:300])
         return None
 
-    # Coerce certains types (le LLM peut renvoyer des null/strings au lieu d'enums)
+    reasoning = data.get("analyst_reasoning", "")
+    if reasoning:
+        logger.debug("cot_reasoning", title=raw.title[:50], reasoning_len=len(reasoning))
+
     data = _coerce(data)
 
     try:
@@ -210,8 +250,7 @@ async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None
 
 
 def _coerce(data: dict) -> dict:
-    """Petits fix pour rendre la sortie LLM tolérante."""
-    # Enums: si la valeur n'est pas dans l'enum, mettre "unknown" / "PENDING"
+    """Normalise la sortie LLM pour compatibilité Pydantic."""
     type_val = (data.get("opportunity_type") or "").lower()
     if type_val not in {e.value for e in OpportunityType}:
         data["opportunity_type"] = "unknown"
@@ -230,7 +269,6 @@ def _coerce(data: dict) -> dict:
     else:
         data["preliminary_decision"] = decision_val
 
-    # Listes: si le LLM renvoie une string, on en fait une liste à 1 élément
     for key in ("geographies", "sectors", "languages", "partners_mentioned"):
         v = data.get(key)
         if isinstance(v, str):
@@ -238,17 +276,21 @@ def _coerce(data: dict) -> dict:
         elif v is None:
             data[key] = []
 
-    # ticket_size_usd: parser si string
     ticket = data.get("ticket_size_usd")
     if isinstance(ticket, str):
         digits = "".join(c for c in ticket if c.isdigit())
         data["ticket_size_usd"] = int(digits) if digits else None
 
-    # Vehicle match: normaliser
     vm = data.get("vehicle_match")
-    if vm and vm.upper() not in {"TGF", "BLUE_BOND", "SEED_OF_CHANGE", "NEW_ERA"}:
+    valid_vehicles = {"TGF", "BLUE_BOND", "SEED_OF_CHANGE", "NEW_ERA", "MUSANADA"}
+    if vm and vm.upper() not in valid_vehicles:
         data["vehicle_match"] = None
     elif vm:
         data["vehicle_match"] = vm.upper()
+
+    # Tronquer le raisonnement si trop long
+    reasoning = data.get("analyst_reasoning")
+    if isinstance(reasoning, str) and len(reasoning) > 2000:
+        data["analyst_reasoning"] = reasoning[:2000]
 
     return data

@@ -122,6 +122,13 @@ class AnalyzedOpportunity(BaseModel):
     # Lien direct vers le formulaire de soumission si l'IA l'a trouvé
     submission_url: str | None = None
 
+    # Raisonnement chain-of-thought (capturé pour auditabilité)
+    analyst_reasoning: str | None = Field(
+        None,
+        max_length=2000,
+        description="Raisonnement CoT en 3 étapes : admissibilité → alignement → décision",
+    )
+
 
 class ScoredOpportunity(BaseModel):
     """Opportunité finale, scorée et prête à être stockée + livrée."""

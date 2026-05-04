@@ -128,20 +128,35 @@ async def main() -> dict:
 
     # 3. Collecte
     collectors = default_collectors()
-    collectors = default_collectors()
     from src.collectors.orchestrator import run_all
     raw_opps = await run_all(collectors)
     logger.info("collection_done", n_raw=len(raw_opps))
 
-    # 4. Dédup intra-run
-    seen = set()
+    # 4a. Dédup intra-run (titre + URL)
+    seen_keys: set[tuple] = set()
     deduped = []
     for r in raw_opps:
-        key = (r.title.lower().strip(), r.url.split("?")[0].lower())
-        if key not in seen:
-            seen.add(key)
+        key = (r.title.lower().strip(), r.url.split("?")[0].rstrip("/").lower())
+        if key not in seen_keys:
+            seen_keys.add(key)
             deduped.append(r)
-    logger.info("after_dedup", n=len(deduped))
+    logger.info("intra_run_dedup", n=len(deduped))
+
+    # 4b. Pré-dédup contre la DB (évite de ré-analyser les AOs déjà connus)
+    async with session_scope() as session:
+        opp_repo = OpportunityRepo(session)
+        known_urls = await opp_repo.get_known_urls(cutoff_days=30)
+
+    truly_new = [
+        r for r in deduped
+        if r.url.split("?")[0].rstrip("/").lower() not in known_urls
+    ]
+    logger.info(
+        "db_prededup",
+        truly_new=len(truly_new),
+        already_known=len(deduped) - len(truly_new),
+    )
+    deduped = truly_new
 
     # Plafonnement
     if len(deduped) > MAX_OPPS_PER_RUN:
@@ -149,7 +164,6 @@ async def main() -> dict:
         deduped = deduped[:MAX_OPPS_PER_RUN]
 
     # 5. Analyse + scoring en parallèle
-    pass  # no class needed
     embedder = VoyageEmbedder()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
 
@@ -177,7 +191,6 @@ async def main() -> dict:
                 n_new += 1
 
     await embedder.aclose()
-    pass
 
     logger.info("scoring_done", new=n_new, updated=n_updated)
 

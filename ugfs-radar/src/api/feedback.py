@@ -165,3 +165,50 @@ async def ingest_single_feedback(
             submitted_by=submitted_by,
         )
     return {"ok": True, "opportunity_id": opportunity_id, "decision": decision}
+
+
+# ============================================================
+# Trigger hebdomadaire (pour GitHub Actions / cron externe)
+# ============================================================
+
+@router.post("/trigger-weekly")
+async def trigger_weekly_run(
+    x_token: Annotated[str | None, Header(alias="X-Trigger-Token")] = None,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """
+    Déclenche le run hebdomadaire complet en arrière-plan.
+
+    Authentification : header `X-Trigger-Token: <api_feedback_token>`
+    ou `Authorization: Bearer <api_feedback_token>`.
+
+    Utilisé par le workflow GitHub Actions (lundi 6h UTC = 7h Tunis).
+    Retourne immédiatement — le run se déroule en arrière-plan.
+    """
+    from fastapi import BackgroundTasks
+    from fastapi.responses import JSONResponse
+
+    settings = get_settings()
+    expected = settings.api_feedback_token
+
+    # Support X-Trigger-Token ou Authorization: Bearer
+    provided = x_token or ""
+    if not provided and authorization:
+        provided = authorization.removeprefix("Bearer ").strip()
+
+    if not provided or provided != expected:
+        raise HTTPException(status_code=403, detail="Token invalide")
+
+    import asyncio
+
+    async def _run_background():
+        from scripts.run_weekly import main as run_weekly
+        try:
+            result = await run_weekly()
+            logger.info("api_weekly_trigger_ok", **result)
+        except Exception as e:
+            logger.exception("api_weekly_trigger_failed", error=str(e))
+
+    asyncio.ensure_future(_run_background())
+    logger.info("weekly_run_triggered_via_api")
+    return {"status": "triggered", "message": "Run hebdomadaire démarré en arrière-plan"}

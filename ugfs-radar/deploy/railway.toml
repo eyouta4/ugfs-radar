@@ -1,18 +1,25 @@
 # ============================================================
-# UGFS-Radar — Configuration de déploiement Railway
+# UGFS-Radar — Configuration Railway
 # ============================================================
-# Railway détecte automatiquement le Dockerfile dans deploy/.
-# On configure ici 2 services :
-#   - api      : service web FastAPI (healthcheck + ingestion feedback)
-#   - worker   : process scheduler APScheduler (run hebdo + alertes)
-# Les 2 services partagent la même base PostgreSQL (pgvector).
+# 2 services Railway + 1 service PostgreSQL partagé :
+#   - api      : FastAPI web (healthcheck + feedback + trigger-weekly)
+#   - worker   : APScheduler daemon (fallback cron local)
+#
+# LE CRON PRINCIPAL est géré par GitHub Actions :
+#   .github/workflows/weekly-trigger.yml → POST /api/feedback/trigger-weekly
+#   Cela garantit le déclenchement lundi 7h00 Tunis même si Railway redémarre.
+#
+# Secrets Railway à configurer (Settings → Variables) :
+#   DATABASE_URL, GROQ_API_KEY, VOYAGE_API_KEY, RESEND_API_KEY,
+#   SERPAPI_KEY, EMAIL_TO, EMAIL_FROM, API_FEEDBACK_TOKEN,
+#   TEAMS_* (optionnel)
 
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "deploy/Dockerfile"
 
 # ============================================================
-# Service 1 — API web
+# Service 1 — API web (service principal)
 # ============================================================
 [deploy]
 startCommand = "uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"
@@ -22,14 +29,15 @@ restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 
 # ============================================================
-# Service 2 — Worker scheduler (à créer en plus dans Railway UI)
+# Service 2 — Worker scheduler (APScheduler, créer séparément)
 #
-# Dans la console Railway :
-#   1. Crée un second service depuis le même repo
-#   2. Override la commande :  python -m scripts.scheduler
-#   3. Désactive le healthcheck (pas d'HTTP exposé)
-#   4. Connecte la même DB PostgreSQL (variable DATABASE_URL partagée)
+# Dans Railway UI :
+#   1. New Service → GitHub repo → même repo
+#   2. Override start command : python -m scripts.scheduler
+#   3. Désactiver healthcheck (pas d'HTTP)
+#   4. Partager la même DB PostgreSQL (variable DATABASE_URL)
+#   5. Injecter toutes les variables d'env (copier depuis Service 1)
 #
-# Les 2 services tournent 24/7. Le worker exécute le job cron
-# tous les lundis matin (timezone Africa/Tunis).
+# Ce worker tourne 24/7 et sert de FALLBACK si GitHub Actions échoue.
+# Il maintient aussi le check quotidien des deadlines urgentes (8h00).
 # ============================================================

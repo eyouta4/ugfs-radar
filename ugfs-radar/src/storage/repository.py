@@ -175,6 +175,17 @@ class OpportunityRepo:
                 rows.append((opp, float(sim)))
         return rows
 
+    async def get_known_urls(self, cutoff_days: int = 30) -> set[str]:
+        """URLs d'opportunités vues dans les N derniers jours (pour pré-dédup)."""
+        cutoff = datetime.utcnow() - timedelta(days=cutoff_days)
+        stmt = (
+            select(Opportunity.url)
+            .where(Opportunity.discovered_at >= cutoff)
+            .where(Opportunity.status != "HISTORICAL")
+        )
+        result = await self.session.execute(stmt)
+        return {row[0].split("?")[0].rstrip("/").lower() for row in result.all()}
+
     async def apply_feedback(
         self,
         opportunity_id: int,

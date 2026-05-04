@@ -180,6 +180,115 @@ def _build_subject(opportunities: Sequence[Opportunity], run_date: date) -> str:
     return base
 
 
+async def send_urgent_deadline_email(
+    opportunities: Sequence[Opportunity],
+    run_date: date | None = None,
+) -> dict:
+    """
+    Envoie une alerte email pour les opportunités avec deadline ≤ 7 jours.
+
+    Distinct du rapport hebdo : email ciblé, objet urgent, envoyé par le check quotidien.
+    """
+    settings = get_settings()
+    if run_date is None:
+        run_date = date.today()
+
+    if not settings.resend_api_key:
+        logger.warning("resend_api_key_missing — urgent email skipped")
+        return {"skipped": True, "reason": "no_api_key"}
+
+    if not settings.email_recipients:
+        logger.warning("no_email_recipients — urgent email skipped")
+        return {"skipped": True, "reason": "no_recipients"}
+
+    n = len(opportunities)
+    subject = f"⚠️ UGFS-Radar · {n} AO URGENT{'S' if n > 1 else ''} — deadline ≤ 7 jours ({run_date.strftime('%d/%m/%Y')})"
+
+    rows_html = ""
+    for opp in sorted(opportunities, key=lambda o: o.deadline or date.max):
+        days = (opp.deadline - run_date).days if opp.deadline else None
+        days_str = f"{days}j" if days is not None else "Rolling"
+        color = "#dc2626" if (days is not None and days <= 3) else "#ca8a04"
+        url = opp.url or ""
+        title_link = f'<a href="{url}" style="color:#0f2a4a;">{opp.title}</a>' if url.startswith("http") else opp.title
+        rows_html += f"""
+        <tr>
+          <td style="padding:10px 8px;border-bottom:1px solid #fecaca;font-weight:700;
+                     color:{color};font-size:16px;width:50px;">{days_str}</td>
+          <td style="padding:10px 8px;border-bottom:1px solid #fecaca;">
+            <div style="font-weight:600;font-size:14px;">{title_link}</div>
+            <div style="color:#6b7280;font-size:12px;margin-top:3px;">
+              Score : {opp.score}/100 · {opp.vehicle_match or opp.opportunity_type or '—'}
+              · Deadline : {opp.deadline.strftime('%d/%m/%Y') if opp.deadline else 'Rolling'}
+            </div>
+          </td>
+        </tr>
+        """
+
+    html_body = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#fef2f2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;padding:30px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="background:#fff;border-radius:8px;overflow:hidden;border:2px solid #dc2626;">
+        <tr>
+          <td style="background:#dc2626;padding:24px 32px;color:#fff;">
+            <div style="font-size:11px;letter-spacing:1px;opacity:0.8;">UGFS-RADAR · ALERTE DEADLINE</div>
+            <div style="font-size:22px;font-weight:700;margin-top:4px;">
+              ⚠️ {n} opportunité{'s' if n > 1 else ''} — deadline ≤ 7 jours
+            </div>
+            <div style="font-size:13px;opacity:0.85;margin-top:6px;">{run_date.strftime('%d/%m/%Y')}</div>
+          </td>
+        </tr>
+        <tr><td style="padding:24px 32px;">
+          <p style="margin:0 0 16px 0;color:#1f2937;font-size:15px;">
+            Les opportunités ci-dessous requièrent une action <strong>immédiate</strong> d'UGFS.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0"
+                 style="border-collapse:collapse;border-top:2px solid #dc2626;">
+            {rows_html}
+          </table>
+          <p style="margin:20px 0 0 0;color:#6b7280;font-size:13px;line-height:1.5;">
+            Consultez le rapport hebdo complet dans votre boîte mail ou sur le dashboard UGFS-Radar.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    payload = {
+        "from": settings.email_from,
+        "to": settings.email_recipients,
+        "subject": subject,
+        "html": html_body,
+    }
+    if settings.email_cc_list:
+        payload["cc"] = settings.email_cc_list
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            r = await client.post(
+                RESEND_API_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            r.raise_for_status()
+            data = r.json()
+            logger.info("urgent_deadline_email_sent", resend_id=data.get("id"), n_urgent=n)
+            return data
+        except httpx.HTTPStatusError as e:
+            logger.error("resend_urgent_http_error", status=e.response.status_code,
+                         body=e.response.text[:300])
+            raise
+
+
 async def send_weekly_email(
     opportunities: Sequence[Opportunity],
     excel_bytes: bytes,
