@@ -293,6 +293,7 @@ async def send_weekly_email(
     opportunities: Sequence[Opportunity],
     excel_bytes: bytes,
     run_date: date | None = None,
+    zip_bytes: bytes | None = None,
 ) -> dict:
     """
     Envoie l'email hebdo avec le fichier Excel en pièce jointe.
@@ -316,17 +317,25 @@ async def send_weekly_email(
     html_body = _build_html_body(opportunities, run_date)
     filename = f"UGFS-Radar_{run_date.strftime('%Y-%m-%d')}.xlsx"
 
+    attachments = [
+        {
+            "filename": filename,
+            "content": base64.b64encode(excel_bytes).decode("ascii"),
+        }
+    ]
+    if zip_bytes:
+        zip_filename = f"UGFS-Guides_{run_date.strftime('%Y-%m-%d')}.zip"
+        attachments.append({
+            "filename": zip_filename,
+            "content": base64.b64encode(zip_bytes).decode("ascii"),
+        })
+
     payload = {
         "from": settings.email_from,
         "to": settings.email_recipients,
         "subject": subject,
         "html": html_body,
-        "attachments": [
-            {
-                "filename": filename,
-                "content": base64.b64encode(excel_bytes).decode("ascii"),
-            }
-        ],
+        "attachments": attachments,
     }
     if settings.email_cc_list:
         payload["cc"] = settings.email_cc_list

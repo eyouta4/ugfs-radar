@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 
-from src.analyzer.llm_analyzer import analyze_opportunity
+from src.analyzer.llm_analyzer import analyze_opportunity, pre_filter, keyword_prescore
 from src.analyzer import (
     VoyageEmbedder,
     compute_score,
@@ -42,13 +42,14 @@ from src.delivery import (
     send_urgent_alerts,
     send_weekly_email,
 )
+from src.delivery.pdf_builder import build_pdfs_zip
 from src.storage.database import init_db, session_scope
 from src.storage.repository import OpportunityRepo, RunRepo, WeightsRepo
 
 logger = get_logger(__name__)
 
-MAX_OPPS_PER_RUN = 80          # plafond pour limiter coûts LLM (~80 * 0 free Groq = 0€)
-MAX_CONCURRENT_LLM = 4         # respecte rate limit Groq (30 RPM)
+MAX_OPPS_PER_RUN = 50          # plafond LLM : top 50 pré-scorés par mots-clés
+MAX_CONCURRENT_LLM = 4         # respecte rate limit Claude (4 appels simultanés)
 
 
 async def _process_one(
@@ -109,6 +110,20 @@ async def main() -> dict:
     # Init DB (s'assurer pgvector + tables présentes)
     await init_db()
 
+    # 0. Reset : supprimer les AOs non-HISTORICAL de plus de 8 jours
+    cutoff_dt = datetime.utcnow() - timedelta(days=8)
+    async with session_scope() as session:
+        from sqlalchemy import delete as sa_delete
+        from src.storage.models import Opportunity as OppModel
+        stmt_del = (
+            sa_delete(OppModel)
+            .where(OppModel.status != "HISTORICAL")
+            .where(OppModel.discovered_at < cutoff_dt)
+        )
+        result_del = await session.execute(stmt_del)
+        await session.commit()
+        logger.info("weekly_cleanup_done", deleted=result_del.rowcount, cutoff=cutoff_dt.isoformat())
+
     # 1. Démarrage du Run
     async with session_scope() as session:
         run_repo = RunRepo(session)
@@ -158,10 +173,17 @@ async def main() -> dict:
     )
     deduped = truly_new
 
-    # Plafonnement
-    if len(deduped) > MAX_OPPS_PER_RUN:
-        logger.info("capped_to_max", from_=len(deduped), to=MAX_OPPS_PER_RUN)
-        deduped = deduped[:MAX_OPPS_PER_RUN]
+    # Pré-filtrage : éliminer les NO-GO évidents sans appel LLM
+    pre_filtered = [r for r in deduped if not pre_filter(r)]
+    n_prefilt = len(deduped) - len(pre_filtered)
+    logger.info("pre_filter_done", removed=n_prefilt, remaining=len(pre_filtered))
+
+    # Tri par score mots-clés → prendre les 50 meilleurs pour le LLM
+    pre_filtered.sort(key=lambda r: keyword_prescore(r), reverse=True)
+    if len(pre_filtered) > MAX_OPPS_PER_RUN:
+        logger.info("capped_to_max", from_=len(pre_filtered), to=MAX_OPPS_PER_RUN)
+        pre_filtered = pre_filtered[:MAX_OPPS_PER_RUN]
+    deduped = pre_filtered
 
     # 5. Analyse + scoring en parallèle
     embedder = VoyageEmbedder()
@@ -217,8 +239,18 @@ async def main() -> dict:
             run_date=today,
         )
 
-        # 9. Email
-        email_result = await send_weekly_email(list(recent), excel_bytes, run_date=today)
+        # 8b. Build PDFs ZIP
+        try:
+            zip_bytes, pdf_names = build_pdfs_zip(list(recent), run_date=today)
+            logger.info("pdfs_zip_built", n_pdfs=len(pdf_names))
+        except Exception as exc:
+            logger.warning("pdfs_zip_failed", error=str(exc))
+            zip_bytes = None
+
+        # 9. Email (Excel + ZIP en pièces jointes)
+        email_result = await send_weekly_email(
+            list(recent), excel_bytes, run_date=today, zip_bytes=zip_bytes
+        )
 
         # 10. Teams alerts
         teams_results = await send_urgent_alerts(list(urgent))

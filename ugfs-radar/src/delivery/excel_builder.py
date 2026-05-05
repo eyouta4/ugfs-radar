@@ -81,8 +81,13 @@ def build_weekly_excel(opportunities,historical=None,output_path=None,run_date=N
         cell.alignment=AC; cell.border=B
         cell.fill=PatternFill(start_color=GRIS_HDR,end_color=GRIS_HDR,fill_type="solid")
     ws.row_dimensions[4].height=35
-    opps=[o for o in (opportunities or []) if getattr(o,"status",None)!="HISTORICAL"]
+    _SOCIAL={"instagram.com","facebook.com","twitter.com","tiktok.com","youtube.com"}
+    opps=[o for o in (opportunities or [])
+          if getattr(o,"status",None)!="HISTORICAL"
+          and (getattr(o,"score",0) or 0)>=45
+          and not any(p in (getattr(o,"url","") or "").lower() for p in _SOCIAL)]
     opps=sorted(opps,key=lambda o:(getattr(o,"client_decision","") in ("NO_GO",),not((_days(o) or 999)<=21 and (_days(o) or 0)>=0),-(getattr(o,"score",0) or 0)))
+    opps=opps[:30]
     if not opps and historical: opps=list(historical)[:25]
     DR=5
     for i,opp in enumerate(opps):

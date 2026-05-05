@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from groq import AsyncGroq, GroqError
+from anthropic import AsyncAnthropic, APIStatusError
 from pydantic import ValidationError
 from tenacity import (
     AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential,
@@ -34,6 +34,65 @@ from src.config import (
 from src.config.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Mots-clés disqualifiant immédiatement une AO sans passer par le LLM.
+_NOGO_TITLE_KEYWORDS = [
+    "youth only", "young people only", "youth-led", "youth led",
+    "ngo only", "ngos only", "civil society only", "non-profit only",
+    "nonprofit only", "not-for-profit only", "individuals only", "individual only",
+    "canada only", "canadian only", "usa only", "us only", "united states only",
+    "latin america only", "east asia only", "pacific only",
+    "deadline passed", "applications closed", "closed",
+    "instagram", "facebook", "tiktok",
+]
+
+_NOGO_URL_PATTERNS = [
+    "instagram.com", "facebook.com", "twitter.com", "tiktok.com",
+    "youtube.com/channel", "linkedin.com/posts",
+]
+
+
+def pre_filter(raw: RawOpportunity) -> bool:
+    """Retourne True si l'AO est évidemment NO-GO sans besoin du LLM."""
+    title_lower = (raw.title or "").lower()
+    url_lower = (raw.url or "").lower()
+    text_lower = (raw.raw_text or "")[:500].lower()
+
+    for kw in _NOGO_TITLE_KEYWORDS:
+        if kw in title_lower or kw in text_lower:
+            logger.info("pre_filter_match", title=raw.title[:60], keyword=kw)
+            return True
+
+    for pat in _NOGO_URL_PATTERNS:
+        if pat in url_lower:
+            logger.info("pre_filter_url", url=raw.url[:80], pattern=pat)
+            return True
+
+    return False
+
+
+# Alias pour rétrocompatibilité
+nogo_preflight = pre_filter
+
+
+# ============================================================
+# Pré-scoring par mots-clés (pour trier avant LLM)
+# ============================================================
+
+_POSITIVE_KEYWORDS = [
+    "tunisia", "tunisie", "maghreb", "mena", "africa", "afrique",
+    "climate", "climatique", "green", "vert", "renewable", "renouvelable",
+    "blended finance", "impact", "asset management", "fund", "fonds",
+    "investment", "investissement", "grant", "subvention",
+    "advisory", "mandate", "giz", "afd", "gcf", "eib", "afdb",
+    "water", "eau", "energy", "energie", "solar", "solaire",
+]
+
+
+def keyword_prescore(raw: RawOpportunity) -> int:
+    """Score rapide par mots-clés pour prioriser les AOs avant analyse LLM."""
+    combined = ((raw.title or "") + " " + (raw.raw_text or "")[:1000]).lower()
+    return sum(1 for kw in _POSITIVE_KEYWORDS if kw in combined)
 
 
 # ============================================================
@@ -167,40 +226,46 @@ Réponds uniquement avec le JSON valide, sans aucun texte avant ou après.
 
 
 # ============================================================
-# Client Groq
+# Client Anthropic
 # ============================================================
 
-_client: AsyncGroq | None = None
+_client: AsyncAnthropic | None = None
 
 
-def _get_client() -> AsyncGroq:
+def _get_client() -> AsyncAnthropic:
     global _client
     if _client is None:
         settings = get_settings()
-        if not settings.groq_api_key:
-            raise RuntimeError("GROQ_API_KEY non configurée")
-        _client = AsyncGroq(api_key=settings.groq_api_key)
+        if not settings.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY non configurée")
+        _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     return _client
 
 
-async def _call_llm(messages: list[dict], temperature: float = 0.15) -> str:
-    """Appel LLM avec retry exponentiel."""
+async def _call_llm(system: str, user: str, temperature: float = 0.15) -> str:
+    """Appel LLM Claude avec retry exponentiel et prompt caching sur le system."""
     settings = get_settings()
     async for attempt in AsyncRetrying(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=2, max=20),
-        retry=retry_if_exception_type(GroqError),
+        retry=retry_if_exception_type(APIStatusError),
         reraise=True,
     ):
         with attempt:
-            response = await _get_client().chat.completions.create(
-                model=settings.groq_model,
-                messages=messages,
+            response = await _get_client().messages.create(
+                model=settings.anthropic_model,
+                max_tokens=2500,
+                system=[
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[{"role": "user", "content": user}],
                 temperature=temperature,
-                max_tokens=2500,          # augmenté pour le raisonnement CoT
-                response_format={"type": "json_object"},
             )
-            return response.choices[0].message.content or "{}"
+            return response.content[0].text or "{}"
     return "{}"
 
 
@@ -212,18 +277,26 @@ async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None
     """
     Analyse une opportunité brute via le LLM (chain-of-thought).
 
-    Retourne un AnalyzedOpportunity validé (avec raisonnement CoT), ou None si échec.
+    Applique pre_filter avant l'appel LLM pour économiser les tokens.
+    Retourne un AnalyzedOpportunity validé, ou None si échec.
     """
+    if pre_filter(raw):
+        return AnalyzedOpportunity(
+            title=raw.title,
+            summary_executive="Disqualifié par le filtre automatique (mots-clés NO-GO détectés).",
+            opportunity_type=OpportunityType.UNKNOWN,
+            theme=Theme.UNKNOWN,
+            eligibility_summary="Non éligible selon les critères UGFS (filtre préliminaire).",
+            why_interesting="N/A — disqualifié avant analyse LLM.",
+            preliminary_decision=Decision.NO_GO,
+            decision_rationale="DISQUALIFIED: no-go preflight filter matched.",
+        )
+
     system = _build_system_prompt()
     user = _build_user_prompt(raw)
 
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
-
     try:
-        raw_json = await _call_llm(messages)
+        raw_json = await _call_llm(system, user)
     except Exception as exc:
         logger.warning("llm_call_failed", title=raw.title[:60], error=str(exc))
         return None
@@ -288,7 +361,6 @@ def _coerce(data: dict) -> dict:
     elif vm:
         data["vehicle_match"] = vm.upper()
 
-    # Tronquer le raisonnement si trop long
     reasoning = data.get("analyst_reasoning")
     if isinstance(reasoning, str) and len(reasoning) > 2000:
         data["analyst_reasoning"] = reasoning[:2000]

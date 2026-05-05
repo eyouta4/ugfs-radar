@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="llama-3.3-70b-versatile")
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    anthropic_model: str = Field(default="claude-3-5-haiku-20241022")
 
     # === Embeddings ===
     voyage_api_key: str = Field(default="")

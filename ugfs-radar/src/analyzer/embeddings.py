@@ -112,13 +112,34 @@ class VoyageEmbedder:
                 results.extend(vectors)
                 logger.debug("voyage_batch_ok", n=len(chunk), model=self.model)
             except httpx.HTTPStatusError as e:
-                logger.error(
-                    "voyage_http_error",
-                    status=e.response.status_code,
-                    body=e.response.text[:300],
-                )
-                # Fallback : zero vector pour ce batch (le pipeline continue)
-                results.extend([[0.0] * EMBEDDING_DIM for _ in chunk])
+                if e.response.status_code == 429:
+                    # Rate limit : 2 retries avec 15s d'attente
+                    succeeded = False
+                    for retry_n in range(2):
+                        logger.warning("voyage_rate_limit_retry", attempt=retry_n + 1)
+                        await asyncio.sleep(15)
+                        try:
+                            resp2 = await client.post(
+                                VOYAGE_API_URL,
+                                json={"input": chunk, "model": self.model, "input_type": input_type},
+                            )
+                            resp2.raise_for_status()
+                            data2 = resp2.json()
+                            results.extend([item["embedding"] for item in data2["data"]])
+                            succeeded = True
+                            break
+                        except Exception:
+                            pass
+                    if not succeeded:
+                        logger.warning("voyage_rate_limit_giving_up — similarity_score=0")
+                        results.extend([[0.0] * EMBEDDING_DIM for _ in chunk])
+                else:
+                    logger.error(
+                        "voyage_http_error",
+                        status=e.response.status_code,
+                        body=e.response.text[:300],
+                    )
+                    results.extend([[0.0] * EMBEDDING_DIM for _ in chunk])
             except Exception as e:
                 logger.error("voyage_unexpected_error", error=str(e))
                 results.extend([[0.0] * EMBEDDING_DIM for _ in chunk])
