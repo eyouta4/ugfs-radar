@@ -15,8 +15,20 @@ import argparse
 import asyncio
 import getpass
 import sys
+from pathlib import Path
 
-from sqlalchemy import select
+try:
+    from sqlalchemy import select
+except ImportError as exc:
+    raise SystemExit(
+        "❌ SQLAlchemy n'est pas installé. Installez les dépendances avec `pip install -r requirements.txt` "
+        "puis réessayez."
+    ) from exc
+
+# Fixe le chemin d'import quand le script est exécuté depuis un répertoire parent.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from src.config.logger import get_logger
 from src.storage.database import init_db, session_scope

@@ -2,8 +2,14 @@ from __future__ import annotations
 import re, zipfile, io
 from datetime import date
 from typing import Sequence
-from fpdf import FPDF
-from fpdf.enums import XPos, YPos
+try:
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+except ImportError as exc:
+    FPDF = None
+    XPos = None
+    YPos = None
+    pdf_import_error = exc
 try:
     from src.config.logger import get_logger
     logger = get_logger(__name__)
@@ -139,6 +145,13 @@ def generate_opportunity_pdf(o):
     return fname, bytes(pdf.output())
 
 def build_pdfs_zip(opportunities, run_date=None):
+    if FPDF is None:
+        logger.warning(
+            "pdf_library_missing",
+            reason="fpdf package is not installed; PDF generation skipped"
+        )
+        return b"", []
+
     if run_date is None: run_date=date.today()
     qualified=sorted([o for o in opportunities if (getattr(o,'score',0) or 0)>=50 and getattr(o,'status',None)!='HISTORICAL'],key=lambda o:-(getattr(o,'score',0) or 0))
     buf=io.BytesIO(); names=[]

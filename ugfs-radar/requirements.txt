@@ -31,6 +31,7 @@ pgvector==0.3.2
 # === Excel / Email ===
 openpyxl==3.1.5
 resend==1.0.1
+fpdf2==2.5.1
 python-dateutil==2.9.0
 
 # === Scheduler & API ===
