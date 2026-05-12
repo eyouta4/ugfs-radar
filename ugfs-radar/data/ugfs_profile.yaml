@@ -1,53 +1,62 @@
 # ============================================================
 # UGFS NORTH AFRICA — Profil d'investissement structuré
+# VERSION 2 — enrichi avec données historiques réelles (2024-2026)
 # ============================================================
 #
 # Ce fichier est la SOURCE DE VÉRITÉ pour le scoring.
-# Il est dérivé des documents UGFS reçus (cahier des charges,
-# sprint AO, CSV historique). Toute valeur marquée [TO_CONFIRM]
-# doit être validée par le client (voir docs/00_DATA_MISSING_FROM_CLIENT.md).
-#
-# Le scoring final est calculé par pondération de ces critères
-# par le module `analyzer.scoring`. Les poids sont ajustés
-# automatiquement par la boucle d'apprentissage (Module 5).
-#
+# Les signaux ci-dessous sont dérivés de :
+#   - Tableau historique des AOs traités par UGFS (2024-2026)
+#   - Discussions Teams internes UGFS sur les appels d'offres
+#   - Prospections 2024 UGFS
 # ============================================================
 
 organization:
   name: "UGFS North Africa"
   hq: "Tunis, Tunisie"
-  type: "Private Equity / Asset Management"
+  type: "Private Equity / Asset Management / Blended Finance"
+  tagline: >
+    UGFS est un gestionnaire de fonds d'impact basé à Tunis, spécialisé
+    en finance climatique, blue economy et agritech. Il répond aux appels
+    d'offres en tant que gestionnaire de fonds (fund manager), pas comme ONG.
+    Son activité principale : lever des capitaux privés pour des véhicules
+    thématiques (TGF, Blue Bond, Seed of Change, NEW ERA, Musanada).
 
-# === Périmètre d'activité ===
+# === Types d'opportunités acceptées ===
 opportunity_types:
-  # Types d'AO acceptés (du cahier des charges)
-  - asset_management
-  - grants
-  - advisory
-  - mandates
+  - asset_management   # UGFS gère / co-gère un fonds → priorité absolue
+  - grants             # Subventions pour développement de véhicule ou projet pilote
+  - advisory           # Mandats de conseil en stratégie climatique / blended finance
+  - mandates           # Mandat de gestion délégué par une institution (AfDB, GCF…)
 
+# === Thématiques avec pondération (somme = 100) ===
 themes:
-  # Thématiques avec pondération relative (somme = 100)
-  green:        50    # [TO_CONFIRM] - Tunisia Green Fund est le pilier dominant dans l'historique
-  blue:         30    # [TO_CONFIRM] - Blue Bond actif
-  generaliste:  20    # [TO_CONFIRM]
+  green:       50   # Énergie, climat, CO2, renouvelable — pilier TGF
+  blue:        30   # Eau, océan, marine, blue economy — pilier Blue Bond
+  generaliste: 20   # Agritech, digital, infrastructure, social
 
+# === Géographies cibles ===
+# EXPANSION STRATÉGIQUE : Afrique + Europe (synergies co-investissement)
 geographies:
-  # Géographies cibles, ordonnées par priorité
-  primary:                                       # Score boost +20
+  primary:                              # Forte probabilité GO — boost scoring
     - Tunisia
     - Tunisie
     - Maghreb
-    - Afrique du Nord / North Africa / MENA
-  secondary:                                     # Score boost +10
+    - Afrique du Nord / North Africa
+    - MENA
+    - Afrique / Africa (général)
+  secondary:                            # Intérêt — traiter sérieusement
     - Afrique sub-saharienne / Sub-Saharan Africa
     - Afrique de l'Ouest / West Africa
     - Sénégal
-    - Mauritania
+    - Mauritanie / Mauritania
     - Maroc / Morocco
     - Algérie / Algeria
     - Egypte / Egypt
-  europe:                                        # Score neutre (selon synergie)
+    - Kenya
+    - Ethiopie / Ethiopia
+    - Rwanda
+    - Afrique de l'Est / East Africa
+  europe:                               # Synergie co-investissement — potentiel
     - European Union / EU
     - France
     - Belgium
@@ -55,78 +64,133 @@ geographies:
     - Germany
     - Denmark
     - Finland
-  excluded_strict:                              # Score = 0 immédiat si SEULE géo
-    - North America (sauf si éligibilité Afrique)
+    - Luxembourg
+    - Switzerland
+  excluded_strict:                      # Score 0 si GÉO UNIQUE hors scope
+    - North America (sauf si éligibilité Afrique explicite)
     - Latin America
-    - East Asia / Pacific (sauf si éligibilité globale)
+    - East Asia / Pacific (sauf si éligibilité globale / Afrique)
 
+# === Ticket size ===
 ticket_size:
-  # Pas de restriction d'après le sprint UGFS
   no_restriction: true
-  # Mais bonus pour les tickets dans la "sweet spot"
   sweet_spot_min_usd: 500_000
   sweet_spot_max_usd: 50_000_000
 
+# === Langues de soumission ===
 languages:
-  preferred: [fr, en]    # [TO_CONFIRM]
+  preferred: [fr, en]
   acceptable: [ar]
-  excluded: []           # On ne rejette aucune langue, on traduit si besoin
+  excluded: []
 
-# === Véhicules portés actuellement par UGFS ===
-# Toute opportunité matchant un véhicule en cours = boost massif (+25)
+# ============================================================
+# VÉHICULES ACTIFS UGFS
+# ============================================================
+# Source : historique réel des soumissions UGFS 2024-2026
 vehicles:
   - name: "Tunisia Green Fund (TGF)"
     code: "TGF"
-    focus: "climate / green / renewable energy"
-    target_size_usd: null              # [TO_CONFIRM]
-    status: "active"                   # [TO_CONFIRM]
+    focus: "climate / green / renewable energy / mitigation / adaptation"
+    status: "active"
+    # AOs soumis avec TGF (historique réel) :
+    # African Energy Futures, APIA/GCF, Climate KIC, Mitigation Action Facility,
+    # CIEIF, Adaptation Fund (avec OSS), Entrepreneurs Catalytic Hub, Common Fund Commodities
     keywords:
       - tunisia green fund
       - tgf
       - climate adaptation
       - renewable energy tunisia
       - green bond
-      - mitigation tunisia
+      - mitigation
+      - low carbon
+      - green climate fund
+      - fvc
+      - fonds vert pour le climat
+      - gcf
+      - climate finance
+      - net zero
+      - decarbonization
+      - clean energy
+      - solar africa
+      - wind energy africa
+      - energy transition
+      - climate resilience
+      - carbon credit
+      - emissions reduction
+      - green infrastructure
+      - climate investment
 
   - name: "Blue Bond"
     code: "BLUE_BOND"
-    focus: "ocean / water / blue economy"
-    target_size_usd: null              # [TO_CONFIRM]
-    status: "active"                   # [TO_CONFIRM]
+    focus: "ocean / water / blue economy / water resilience / maritime"
+    status: "active"
+    # AOs soumis avec Blue Bond :
+    # SDG Impact Finance Initiative (SIFI), APIA/GCF (co-soumis)
     keywords:
       - blue bond
       - ocean
       - blue economy
       - water resilience
       - marine
+      - sifi
+      - sdg impact finance
+      - water security
+      - coastal
+      - desalination
+      - irrigation
+      - wastewater
+      - aquaculture
+      - fisheries
+      - mediterranean
+      - hydrique
+      - ressources en eau
+      - gestion de l eau
 
   - name: "Seed of Change"
     code: "SEED_OF_CHANGE"
-    focus: "agritech / food security / SMEs"
-    target_size_usd: null              # [TO_CONFIRM]
-    status: "active"                   # [TO_CONFIRM]
+    focus: "agritech / food security / SMEs / agriculture Africa"
+    status: "active"
+    # AOs soumis avec Seed of Change :
+    # AgriFI (Global Grants), Common Fund for Commodities
     keywords:
       - seed of change
       - agritech
       - agriculture africa
       - agrifi
       - food systems
-      - seed funding
+      - food security
+      - sme africa
+      - pme afrique
+      - smallholder
+      - agroalimentaire
+      - supply chain agriculture
+      - value chain food
+      - rural finance
+      - farm finance
+      - cooperative finance
 
   - name: "NEW ERA Fund"
     code: "NEW_ERA"
-    focus: "venture / innovation / digital"
-    target_size_usd: null              # [TO_CONFIRM]
-    status: "active"                   # [TO_CONFIRM]
+    focus: "emerging fund manager / venture capital / innovation / digital Africa"
+    status: "active"
+    # AOs soumis : Fund Launch Partners (x2) — réponses négatives reçues
     keywords:
       - new era
       - emerging fund manager
       - venture capital africa
+      - first time fund
+      - fund manager program
+      - fund launch
+      - blended finance emerging
+      - impact venture
+      - startup africa
+      - innovation fund africa
+      - tech fund africa
+      - digital africa
 
   - name: "Musanada Fund"
     code: "MUSANADA"
-    focus: "infrastructure / public services / social housing"
-    target_size_usd: null
+    focus: "infrastructure / public services / social housing / urban"
     status: "active"
     keywords:
       - musanada
@@ -135,32 +199,53 @@ vehicles:
       - public infrastructure africa
       - housing fund
       - urban development fund
+      - affordable housing
+      - municipal finance
+      - public private partnership
+      - ppp infrastructure
 
-# === Partenaires et co-investisseurs prioritaires ===
-# Toute mention de ces noms = boost de score (+15)
+# ============================================================
+# PARTENAIRES ET CO-INVESTISSEURS PRIORITAIRES
+# ============================================================
 priority_partners:
-  development_finance:
+  development_finance:                  # Institutions connues = boost massif
     - GIZ
     - CFYE
     - AFD
-    - AfDB
-    - IFC
-    - BEI / EIB
+    - AfDB / Banque Africaine de Développement
+    - IFC / World Bank
+    - BEI / EIB / European Investment Bank
     - Adaptation Fund
-    - GCF / Green Climate Fund
+    - GCF / Green Climate Fund / Fonds Vert pour le Climat
     - Mitigation Action Facility
     - Climate KIC
-    - Convergence
+    - Convergence Blended Finance
     - SDG Impact Finance Initiative / SIFI
     - Common Fund for Commodities
     - ESTDEV
     - Finnpartnership
     - Honnold Foundation
     - Anesvad Foundation
+    - APIA
+    - CIEIF
+    - DIV Fund / Development Innovation Ventures
+    - Horizon Europe
+    - European Commission
+    - UNEP / PNUE
+    - UNDP / PNUD
+    - USAID
+    - KfW
+    - Proparco
+    - FMO (Netherlands)
+    - CDC / BII
+    - Swiss SECO
+    - DFI
+    - Africa50
+    - Convergence Finance
   partners_seen_in_history:
-    - OSS                   # déjà partenaire (Adaptation Fund)
-    - MSF
-    - WSU                   # vu sur Verdant Capital
+    - OSS                   # co-dossier Adaptation Fund
+    - MSF                   # AO "Improving climate and weather models for Africa"
+    - WSU                   # vu sur Verdant Capital / Impact Fund Denmark
     - Galite Partners
     - Cibola Partners
     - Greenshore Capital
@@ -173,45 +258,76 @@ priority_partners:
     - DRK Foundation
     - MADICA
     - Bridger Pennington / Fund Launch Partners
+    - FEVE / Fonds Energie Verte
+    - African Energy Futures
+    - Entrepreneurs Catalytic Hub
+    - JIF / Joint Innovation Facility
+    - AEDIB
 
-# === Critères de DISQUALIFICATION immédiate (score = 0) ===
+# ============================================================
+# CRITÈRES DE DISQUALIFICATION IMMÉDIATE
+# ============================================================
 disqualification_rules:
   - rule: "Géographie strictement hors scope (Asie hors MENA, Amérique du Nord, Amérique Latine)"
     field: "geography"
-    examples_seen_in_history:
-      - "ESTDEV — financement uniquement Botswana/Kenya/Namibie/Zambie/Tanzanie/Ouganda → UGFS non éligible"
-      - "Visa Grant Program — Canada uniquement"
-  - rule: "Type d'éligibilité ne permet pas un asset manager (ex: 'groupes locaux uniquement')"
+    examples:
+      - "ESTDEV — financement uniquement Botswana/Kenya/Namibie/Zambie/Tanzanie/Ouganda → UGFS non éligible (géo trop restrictive, pas Tunisie/Maghreb)"
+      - "Visa Grant Program YSpace — Canada uniquement"
+  - rule: "Éligibilité réservée exclusivement aux ONG, groupes locaux, jeunes ou individus"
     field: "eligibility"
-    examples_seen_in_history:
-      - "YCJF — exige groupes émergents dirigés par des jeunes, ancrage local"
-      - "Sustainability Open Innovation Challenge — non éligible pour fond"
-  - rule: "Deadline déjà dépassée"
-    field: "deadline"
-    description: "Si deadline < today() → ignore"
-  - rule: "Type 'consultancy firm' (RFP individuel, pas pour fonds)"
+    examples:
+      - "YCJF — exige groupes émergents dirigés par des jeunes, ancrage local communautaire"
+      - "Sustainability Open Innovation Challenge — non éligible pour fonds"
+      - "MADICA — programme startups, pas pour fund managers"
+      - "Honnold Foundation — ONG solaire communautaire uniquement"
+  - rule: "RFP/TDR pour cabinet de conseil individuel (pas pour gestionnaire de fonds)"
     field: "type"
-    examples_seen_in_history:
-      - "Smart Africa RFP — recrutement de cabinet conseil, pas pour fonds"
+    examples:
+      - "Smart Africa RFP — recrutement cabinet conseil, pas pour fonds"
+  - rule: "Deadline clairement dépassée"
+    field: "deadline"
+  - rule: "Programme réservé à des startups en early stage (pas à des gestionnaires de fonds)"
+    field: "eligibility"
+    examples:
+      - "Renew Venture Lab — accompagnement fondateurs de startups africains"
+      - "Comcast Innovation Fund — projets open-source / connectivité"
 
-# === Pondération du scoring (somme = 100) ===
+# ============================================================
+# SIGNAUX DE GO IDENTIFIÉS DANS L'HISTORIQUE UGFS
+# ============================================================
+# Ces patterns correspondent aux AOs sur lesquels UGFS a soumis (GO_SUBMITTED)
+# → L'agent doit reconnaître ces types d'opportunités en priorité
+go_patterns:
+  - "Appel à manifestation d'intérêt pour gestionnaire de fonds climatique en Afrique"
+  - "Call for fund managers to deploy blended finance for climate in Africa/MENA"
+  - "Grant or mandate for emerging fund manager in climate / green / blue economy"
+  - "Acceleration ou incubation pour fonds à impact (pas pour startups individuelles)"
+  - "Co-gestion ou délégation d'un fonds d'investissement vert / eau / agri en Afrique"
+  - "Programme financement institution (GCF, AFD, AfDB, GIZ) pour fonds africain"
+  - "Call for proposals for financial intermediaries / asset managers in Africa"
+  - "RFP pour fonds d'investissement à impact / blended finance Afrique MENA"
+
+# ============================================================
+# PONDÉRATION DU SCORING (somme = 100)
+# ============================================================
+# Ces poids sont initiaux — ajustés automatiquement par la boucle d'apprentissage
 scoring_weights:
-  # Ces poids sont initiaux. Ils seront ajustés par la boucle d'apprentissage
-  # à partir des décisions Go/No-Go du client.
-  geography_match:        20
-  theme_match:            20
-  vehicle_match:          25      # le plus important : un AO qui matche un véhicule actif est en or
-  partner_match:          10
-  deadline_feasibility:   10      # est-ce qu'on a le temps de soumettre proprement ?
-  ticket_in_sweet_spot:    5
-  language_match:          5
-  similarity_to_past_go:   5      # ajusté à +10 si très similaire à un Go passé
+  geography_match:       20   # géo primaire/secondaire/Europe
+  theme_match:           20   # green/blue/generaliste vs thèmes UGFS
+  vehicle_match:         25   # match avec un véhicule actif UGFS → très important
+  partner_match:         10   # partenaire prioritaire mentionné
+  deadline_feasibility:  10   # deadline réaliste pour soumission (>= 14j restants)
+  ticket_in_sweet_spot:   5   # montant dans la sweet spot UGFS
+  language_match:         5   # langue fr/en préférée
+  similarity_to_past_go:  5   # similarité sémantique avec AOs soumis passés
 
-# === Boucle d'apprentissage ===
+# ============================================================
+# BOUCLE D'APPRENTISSAGE
+# ============================================================
 learning:
-  # Combien de feedbacks Go/No-Go avant de recalibrer les poids
   min_feedbacks_for_recalibration: 5
-  # Méthode : régression logistique simple sur les features extraites par le LLM
   method: logistic_regression
-  # Fréquence de recalibration (cron dimanche soir)
   cadence: weekly
+  feedback_email: "radar-feedback@ugfs-na.com"
+  # Après chaque réunion UGFS : renvoyer le fichier Excel avec colonne J remplie
+  # L'agent intègre les décisions et recalibre ses poids de scoring automatiquement

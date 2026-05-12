@@ -25,13 +25,19 @@ logger = get_logger(__name__)
 
 # (label, url, source_kind)
 DEFAULT_FEEDS: list[tuple[str, str, SourceKind]] = [
-    ("afdb", "https://www.afdb.org/en/news-and-events/feed", SourceKind.INSTITUTIONAL),
-    ("adaptation_fund", "https://www.adaptation-fund.org/feed/", SourceKind.INSTITUTIONAL),
-    ("cif", "https://www.cif.org/news/rss.xml", SourceKind.INSTITUTIONAL),
-    ("afd_news", "https://www.afd.fr/fr/feed/news.xml", SourceKind.INSTITUTIONAL),
-    ("climate_kic", "https://www.climate-kic.org/feed/", SourceKind.INSTITUTIONAL),
-    # Nota : si une source bloque le user-agent par défaut feedparser, on peut
-    # passer par self.fetch() puis feedparser.parse(content). Voir _parse_with_httpx.
+    # Institutions de développement — Afrique
+    ("afdb",            "https://www.afdb.org/en/news-and-events/feed",        SourceKind.INSTITUTIONAL),
+    ("adaptation_fund", "https://www.adaptation-fund.org/feed/",               SourceKind.INSTITUTIONAL),
+    ("cif",             "https://www.cif.org/news/rss.xml",                    SourceKind.INSTITUTIONAL),
+    ("climate_kic",     "https://www.climate-kic.org/feed/",                   SourceKind.INSTITUTIONAL),
+    # Institutions bilatérales — Europe + Afrique
+    ("afd_news",        "https://www.afd.fr/fr/feed/news.xml",                 SourceKind.INSTITUTIONAL),
+    ("afd_appels",      "https://www.afd.fr/fr/appels-a-projets/feed",         SourceKind.INSTITUTIONAL),
+    # Portails d'opportunités globalaux
+    ("devex",           "https://www.devex.com/news/rss.xml",                  SourceKind.AGGREGATOR),
+    # Mitigation Action Facility
+    ("mitigation_af",   "https://mitigation-action.org/feed/",                 SourceKind.INSTITUTIONAL),
+    # Nota : si une source bloque le UA feedparser, on passe par _parse_with_httpx.
 ]
 
 # Mots-clés pour pré-filtrer (un AO doit contenir au moins l'un d'eux pour être retenu)

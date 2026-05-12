@@ -21,7 +21,7 @@ from openpyxl import load_workbook
 
 from src.config.logger import get_logger
 from src.config.settings import get_settings
-from src.delivery.excel_builder import ALL_OPPS_COLUMNS
+from src.delivery.excel_builder import COL_ID, COL_TITLE, COL_DECISION, COL_REASON
 from src.storage.database import session_scope
 from src.storage.repository import OpportunityRepo
 
@@ -29,12 +29,6 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 VALID_DECISIONS = {"GO", "NO_GO", "BORDERLINE", "SUBMITTED"}
-
-# Map nom de colonne → index (basé sur ALL_OPPS_COLUMNS de excel_builder.py)
-COL_ID = 0  # Opportunite (colonne A)
-COL_TITLE = 0  # Opportunite
-COL_DECISION = 7  # Responsable / Decision UGFS (colonne H)
-COL_REASON = 7  # meme colonne
 
 
 def _check_token(token: str | None) -> None:
@@ -63,11 +57,16 @@ async def ingest_excel_feedback(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Excel illisible : {e}")
 
-    sheet_name = "Toutes opportunités"
-    if sheet_name not in wb.sheetnames:
+    # Accept both accent and no-accent variant (backward compat with older files)
+    sheet_name = None
+    for candidate in ("Toutes opportunites", "Toutes opportunités", "Opportunites", "Opportunités"):
+        if candidate in wb.sheetnames:
+            sheet_name = candidate
+            break
+    if sheet_name is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Onglet '{sheet_name}' introuvable. Onglets: {wb.sheetnames}",
+            detail=f"Onglet introuvable. Onglets disponibles: {wb.sheetnames}",
         )
     ws = wb[sheet_name]
 

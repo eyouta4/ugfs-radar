@@ -261,15 +261,14 @@ async def main() -> dict:
         run_obj = (await session.execute(
             select(Run).where(Run.id == run_id)
         )).scalar_one()
+        email_ok = bool(email_result and not email_result.get("skipped"))
         await run_repo.finish_run(
             run_obj,
             status="OK",
-            n_collected=len(deduped),
-            n_new=n_new,
-            n_updated=n_updated,
-            n_urgent=len(urgent),
-            email_sent=bool(email_result and not email_result.get("skipped")),
-            teams_alerts_sent=len(teams_results),
+            raw_collected=len(deduped),
+            new_opportunities=n_new,
+            urgent_alerts=len(urgent),
+            notes=f"email={'sent' if email_ok else 'skipped'} | teams={len(teams_results)}",
         )
 
     elapsed = round(time.monotonic() - started, 1)

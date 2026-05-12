@@ -42,14 +42,16 @@ _NOGO_TITLE_KEYWORDS = [
     "nonprofit only", "not-for-profit only", "individuals only", "individual only",
     "canada only", "canadian only", "usa only", "us only", "united states only",
     "latin america only", "east asia only", "pacific only",
-    "deadline passed", "applications closed", "closed",
-    "instagram", "facebook", "tiktok",
+    "deadline passed", "applications closed",
+    # "closed" intentionally removed — too broad, kills valid AOs
+    "instagram", "tiktok",
+    # facebook/twitter removed from title filter — may appear as links in valid AO descriptions
 ]
 
 _NOGO_URL_PATTERNS = [
     "instagram.com", "facebook.com", "twitter.com", "tiktok.com",
     "youtube.com/channel",
-    # linkedin intentionally NOT blocked — UGFS finds most opportunities there
+    # linkedin.com/posts is intentionally NOT blocked — UGFS finds most opportunities there
 ]
 
 
@@ -81,12 +83,27 @@ nogo_preflight = pre_filter
 # ============================================================
 
 _POSITIVE_KEYWORDS = [
+    # Géographies prioritaires
     "tunisia", "tunisie", "maghreb", "mena", "africa", "afrique",
+    "north africa", "afrique du nord", "sub-saharan", "subsaharan",
+    "senegal", "morocco", "maroc", "egypt", "egypte", "west africa",
+    # Thèmes clés
     "climate", "climatique", "green", "vert", "renewable", "renouvelable",
-    "blended finance", "impact", "asset management", "fund", "fonds",
-    "investment", "investissement", "grant", "subvention",
-    "advisory", "mandate", "giz", "afd", "gcf", "eib", "afdb",
-    "water", "eau", "energy", "energie", "solar", "solaire",
+    "clean energy", "energie propre", "solar", "solaire", "wind energy",
+    "blue economy", "ocean", "water", "eau", "maritime",
+    "agritech", "agriculture", "food security", "securite alimentaire",
+    # Types d'opportunités
+    "blended finance", "impact investing", "impact finance",
+    "asset management", "fund manager", "gestionnaire de fonds",
+    "fund", "fonds", "investment", "investissement",
+    "grant", "subvention", "mandate", "mandat",
+    "advisory", "appel à projets", "call for proposals",
+    "expression of interest", "manifestation d interet",
+    # Partenaires prioritaires
+    "giz", "afd", "gcf", "eib", "afdb", "ifc", "convergence",
+    "mitigation action facility", "climate kic", "adaptation fund",
+    "sifi", "agri-fi", "agrifi", "apia", "cieif", "cfye",
+    "green climate fund", "fonds vert", "horizon europe",
 ]
 
 
@@ -122,19 +139,26 @@ def _build_system_prompt() -> str:
     geo_secondary = ", ".join(profile["geographies"].get("secondary", [])[:6])
     geo_europe = ", ".join(profile["geographies"].get("europe", [])[:5])
 
-    return f"""Tu es un analyste senior chez **UGFS North Africa**, société de Private Equity basée à Tunis, spécialisée en finance climatique et impact investing.
+    # GO patterns from real UGFS history
+    go_patterns = profile.get("go_patterns", [])
+    go_patterns_text = "\n".join(f"  • {p}" for p in go_patterns[:8]) if go_patterns else ""
+
+    return f"""Tu es un analyste senior chez **UGFS North Africa**, gestionnaire de fonds d'impact basé à Tunis, spécialisé en finance climatique et blended finance.
+
+IMPORTANT : UGFS répond aux appels d'offres en tant que **gestionnaire de fonds (fund manager)**, pas comme ONG ou startup.
+Son rôle : lever et déployer des capitaux privés via ses véhicules d'investissement thématiques.
 
 ═══════════════════════════════════════════════════════
 PROFIL UGFS
 ═══════════════════════════════════════════════════════
-**Types acceptés :** asset management, grants, advisory, mandats
+**Types acceptés :** asset management, grants pour développement de fonds, advisory, mandats de gestion
 **Thématiques :** green (50% priorité), blue (30%), généraliste (20%)
 
 **Géographies :**
   → Primaires (fort intérêt) : {geo_primary}
   → Secondaires (intérêt) : {geo_secondary}
   → Europe (synergie co-investissement) : {geo_europe}
-  → HORS SCOPE : North America, Latin America, East Asia/Pacific
+  → HORS SCOPE : North America, Latin America, East Asia/Pacific (sauf si éligibilité Afrique explicite)
 
 **Véhicules actifs UGFS :**
 {vehicle_lines}
@@ -144,6 +168,9 @@ PROFIL UGFS
 **Critères de DISQUALIFICATION immédiate :**
 {dq_rules}
 
+**Patterns d'opportunités GO identifiés dans l'historique réel UGFS :**
+{go_patterns_text}
+
 ═══════════════════════════════════════════════════════
 MÉTHODE D'ANALYSE OBLIGATOIRE — CHAIN OF THOUGHT
 ═══════════════════════════════════════════════════════
@@ -151,25 +178,25 @@ MÉTHODE D'ANALYSE OBLIGATOIRE — CHAIN OF THOUGHT
 Tu DOIS raisonner en 3 étapes avant de produire le JSON :
 
 **ÉTAPE 1 — ADMISSIBILITÉ (2-4 phrases)**
-Pose-toi ces questions :
   • La deadline est-elle déjà passée (vs aujourd'hui) ?
-  • La géographie est-elle 100% hors scope UGFS (Asie hors MENA, Amériques) ?
-  • L'éligibilité exclut-elle explicitement les fonds / asset managers ?
-  • Est-ce un RFP pour cabinet de conseil individuel ?
-  → Conclure : "Admissible" ou "DISQUALIFIÉ : [raison]"
+  • La géographie est-elle 100% hors scope UGFS ?
+  • L'éligibilité exclut-elle explicitement les gestionnaires de fonds / asset managers ?
+  • Est-ce un RFP pour cabinet de conseil individuel ou programme pour startups/ONG uniquement ?
+  → Conclure : "Admissible" ou "DISQUALIFIÉ : [raison précise]"
 
 **ÉTAPE 2 — ALIGNEMENT UGFS (4-6 phrases)**
-  • Thème : green (énergie, climat, CO2), blue (eau, océan, maritime), généraliste ?
+  • Thème : green (énergie, climat, CO2, renouvelable), blue (eau, océan, marine), généraliste ?
   • Véhicule UGFS le plus adapté : TGF / Blue Bond / Seed of Change / NEW ERA / Musanada ?
-  • Géographie : primaire (Tunisie/Maghreb/MENA), secondaire (SSA), Europe, ou autre ?
-  • Partenaires mentionnés parmi nos prioritaires ?
-  • Ticket size si précisé — dans la sweet spot (500K-50M USD) ?
+  • Géographie : primaire (Tunisie/Maghreb/MENA), secondaire (Afrique SSA), Europe, ou hors scope ?
+  • Partenaires mentionnés parmi nos prioritaires (GCF, AFD, GIZ, AfDB, IFC, Mitigation AF, Climate KIC...) ?
+  • Ticket size si précisé — sweet spot UGFS 500K-50M USD ?
+  • Est-ce que l'AO ressemble aux types d'opportunités soumises historiquement par UGFS ?
 
 **ÉTAPE 3 — RECOMMANDATION (1-3 phrases)**
-  → GO si : véhicule UGFS clair ET géographie primaire/secondaire ET deadline réaliste
-  → BORDERLINE si : alignement partiel, mérite exploration, mais incertitudes
-  → NO_GO si : DQ ou trop éloigné du profil UGFS
-  → Justifier brièvement la recommandation
+  → GO si : véhicule UGFS clair ET (géographie primaire OU secondaire OU Europe) ET deadline réaliste ET asset manager éligible
+  → BORDERLINE si : alignement partiel, partenaire connu, géographie étendue mais pas disqualifiante, mérite investigation
+  → NO_GO si : disqualifié OU type incompatible (startup, ONG uniquement) OU géographie strictement hors scope
+  → Justifier avec 1-2 raisons concrètes
 
 Ce raisonnement va dans le champ `analyst_reasoning` du JSON.
 Après ce raisonnement, produis le JSON STRICT. Réponds UNIQUEMENT avec le JSON, sans markdown.

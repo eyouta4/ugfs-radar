@@ -1,47 +1,93 @@
-name: Weekly Run — Monday 7h Tunis
+name: Weekly Run — Lundi 07h00 Tunis (UTC+1)
 
-# Déclenche le run hebdomadaire UGFS-Radar chaque lundi à 6h UTC (= 7h Tunis UTC+1).
-# Contournement fiable du cron Railway qui peut être instable.
+# MÉCANISME PRINCIPAL de déclenchement hebdomadaire.
+# Le worker APScheduler sur Railway est le FALLBACK si ce workflow échoue.
 #
-# Secrets GitHub requis :
-#   UGFS_API_URL      : URL du service API Railway, ex. https://ugfs-radar-api.up.railway.app
-#   API_FEEDBACK_TOKEN: même valeur que la variable Railway API_FEEDBACK_TOKEN
+# Secrets GitHub requis (Settings → Secrets and variables → Actions) :
+#   UGFS_API_URL       : https://ugfs-radar-production.up.railway.app
+#   API_FEEDBACK_TOKEN : valeur identique à la variable Railway API_FEEDBACK_TOKEN
 
 on:
   schedule:
-    - cron: "0 6 * * 1"   # lundi 6h UTC = 7h Tunis (UTC+1 hiver / UTC+2 été → ajuster si besoin)
-  workflow_dispatch:        # déclenchement manuel possible depuis l'UI GitHub
+    - cron: "0 6 * * 1"     # Lundi 06h00 UTC = 07h00 Tunis UTC+1 (hiver)
+    # Note : en été (UTC+2) l'heure serait 08h00 Tunis — ajuster à "0 5 * * 1" si besoin
+  workflow_dispatch:         # Déclenchement manuel depuis l'UI GitHub (tests)
 
 jobs:
   trigger-weekly:
     name: Trigger UGFS-Radar weekly run
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
-      - name: Trigger via API
+      - name: Vérifier les secrets
+        run: |
+          if [ -z "${{ secrets.UGFS_API_URL }}" ]; then
+            echo "ERROR: Secret UGFS_API_URL manquant dans GitHub Secrets"
+            exit 1
+          fi
+          if [ -z "${{ secrets.API_FEEDBACK_TOKEN }}" ]; then
+            echo "ERROR: Secret API_FEEDBACK_TOKEN manquant dans GitHub Secrets"
+            exit 1
+          fi
+          echo "Secrets OK."
+
+      - name: Attendre que l'API soit disponible
+        run: |
+          MAX_TRIES=5
+          DELAY=15
+          for i in $(seq 1 $MAX_TRIES); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${{ secrets.UGFS_API_URL }}/health" --max-time 10 || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "API disponible (tentative $i)"
+              break
+            fi
+            echo "API non disponible (HTTP $STATUS), attente ${DELAY}s... (tentative $i/$MAX_TRIES)"
+            if [ "$i" = "$MAX_TRIES" ]; then
+              echo "ERROR: API Railway inaccessible après $MAX_TRIES tentatives"
+              exit 1
+            fi
+            sleep $DELAY
+          done
+
+      - name: Déclencher le run hebdomadaire
         env:
           UGFS_API_URL: ${{ secrets.UGFS_API_URL }}
           API_FEEDBACK_TOKEN: ${{ secrets.API_FEEDBACK_TOKEN }}
         run: |
           set -e
-          echo "Triggering UGFS-Radar weekly run..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          echo "Déclenchement du run hebdomadaire UGFS-Radar..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
             "${UGFS_API_URL}/api/feedback/trigger-weekly" \
             -H "X-Trigger-Token: ${API_FEEDBACK_TOKEN}" \
             -H "Content-Type: application/json" \
             --retry 3 \
-            --retry-delay 10 \
-            --max-time 30)
+            --retry-delay 20 \
+            --retry-on-http-error \
+            --max-time 45)
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
           BODY=$(echo "$RESPONSE" | head -n-1)
 
-          echo "Response: $BODY"
-          echo "HTTP status: $HTTP_CODE"
+          echo "Réponse API : $BODY"
+          echo "Code HTTP  : $HTTP_CODE"
 
-          if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "ERROR: API returned HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "ERREUR : l'API a retourné HTTP $HTTP_CODE"
             exit 1
           fi
-          echo "Weekly run triggered successfully."
+
+          echo "Run hebdomadaire déclenché avec succès."
+
+      - name: Notifier en cas d'échec
+        if: failure()
+        run: |
+          echo "ALERTE : Le déclenchement automatique lundi a ÉCHOUÉ."
+          echo "Vérifier :"
+          echo "  1. Variables Railway : DATABASE_URL, RESEND_API_KEY, EMAIL_TO, SERPAPI_KEY, ANTHROPIC_API_KEY"
+          echo "  2. Secrets GitHub    : UGFS_API_URL, API_FEEDBACK_TOKEN"
+          echo "  3. Logs Railway      : https://railway.app → ugfs-radar → Logs"
+          echo "  4. Le worker APScheduler doit aussi être déployé comme 2e service Railway"
