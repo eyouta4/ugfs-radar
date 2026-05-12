@@ -48,7 +48,8 @@ _NOGO_TITLE_KEYWORDS = [
 
 _NOGO_URL_PATTERNS = [
     "instagram.com", "facebook.com", "twitter.com", "tiktok.com",
-    "youtube.com/channel", "linkedin.com/posts",
+    "youtube.com/channel",
+    # linkedin intentionally NOT blocked — UGFS finds most opportunities there
 ]
 
 

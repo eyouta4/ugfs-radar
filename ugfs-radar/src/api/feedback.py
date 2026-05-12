@@ -209,6 +209,6 @@ async def trigger_weekly_run(
         except Exception as e:
             logger.exception("api_weekly_trigger_failed", error=str(e))
 
-    asyncio.ensure_future(_run_background())
+    asyncio.create_task(_run_background())
     logger.info("weekly_run_triggered_via_api")
     return {"status": "triggered", "message": "Run hebdomadaire démarré en arrière-plan"}

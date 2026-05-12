@@ -64,7 +64,7 @@ def _resp_str(o):
 
 def build_weekly_excel(opportunities,historical=None,output_path=None,run_date=None):
     if run_date is None: run_date=date.today()
-    wb=Workbook(); ws=wb.active; ws.title="Opportunites"
+    wb=Workbook(); ws=wb.active; ws.title="Toutes opportunites"
     ws.sheet_view.showGridLines=False
     ws.row_dimensions[1].height=8
     ws.merge_cells("A2:E2")
