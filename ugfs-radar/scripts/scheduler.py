@@ -2,17 +2,17 @@
 scripts/scheduler.py — Daemon APScheduler (worker Railway).
 
 Déclenchements :
-  - Lundi 07h00 (Africa/Tunis) → run_weekly.main()          ← PRIORITAIRE
-  - Vendredi 16h00              → run_weekly.main() si pas encore fait cette semaine (failsafe)
-  - Tous les jours 08h00        → check deadlines urgentes (Teams + email)
-  - Jeudi 09h00                 → alerte deadline J-7 pour toutes AOs avec deadline la semaine suivante
-  - Mensuel 1er du mois 03h00   → recalibration des poids ML
+  - Mercredi 20h00 (Africa/Tunis) → run_weekly.main()        ← PRIORITAIRE
+  - Dimanche 18h00                → run_weekly.main() si pas encore fait cette semaine (failsafe)
+  - Tous les jours 08h00          → check deadlines urgentes (Teams + email)
+  - Jeudi 09h00                   → alerte deadline J-7 pour toutes AOs avec deadline la semaine suivante
+  - Mensuel 1er du mois 03h00     → recalibration des poids ML
 
 Architecture de fiabilité :
-  1. GitHub Actions (principal)  → POST /api/feedback/trigger-weekly
+  1. GitHub Actions (principal)    → POST /api/feedback/trigger-weekly
   2. APScheduler worker (fallback) → run_weekly directement si Actions échoue
-  3. Le vendredi est un 2e filet : si lundi ET GitHub Actions ont tous deux échoué,
-     le run se déclenche vendredi avec les AOs de la semaine entière.
+  3. Le dimanche est un 2e filet : si mercredi ET GitHub Actions ont tous deux échoué,
+     le run se déclenche dimanche avec les AOs de la semaine entière.
 """
 from __future__ import annotations
 
@@ -38,10 +38,10 @@ async def weekly_job():
         logger.exception("scheduler_weekly_failed", error=str(e))
 
 
-async def friday_failsafe_job():
+async def sunday_failsafe_job():
     """
-    Filet de sécurité vendredi 16h00 : déclenche le run si aucune exécution
-    réussie n'a eu lieu lundi ou mardi de cette semaine.
+    Filet de sécurité dimanche 18h00 : déclenche le run si aucune exécution
+    réussie n'a eu lieu mercredi, jeudi ou vendredi de cette semaine.
     """
     from src.storage.database import init_db, session_scope
     from src.storage.models import Run
@@ -49,22 +49,22 @@ async def friday_failsafe_job():
 
     await init_db()
     today = date.today()
-    monday = today - timedelta(days=today.weekday())   # lundi de cette semaine
+    wednesday = today - timedelta(days=(today.weekday() - 2) % 7)   # mercredi de cette semaine
 
     async with session_scope() as session:
         stmt = (
             select(Run)
-            .where(Run.started_at >= monday.isoformat())
+            .where(Run.started_at >= wednesday.isoformat())
             .where(Run.status == "OK")
         )
         result = await session.execute(stmt)
         runs_this_week = result.scalars().all()
 
     if not runs_this_week:
-        logger.warning("friday_failsafe_triggered — aucun run OK cette semaine, lancement forcé")
+        logger.warning("sunday_failsafe_triggered — aucun run OK cette semaine, lancement forcé")
         await weekly_job()
     else:
-        logger.info("friday_failsafe_skip — run OK déjà effectué cette semaine",
+        logger.info("sunday_failsafe_skip — run OK déjà effectué cette semaine",
                     n_runs=len(runs_this_week))
 
 
@@ -161,11 +161,11 @@ async def main():
         misfire_grace_time=3600,   # tolérance 1h si Railway redémarre au mauvais moment
     )
 
-    # ── Filet de sécurité vendredi ──────────────────────────────────────
+    # ── Filet de sécurité dimanche ──────────────────────────────────────
     scheduler.add_job(
-        friday_failsafe_job,
-        CronTrigger(day_of_week="fri", hour=16, minute=0, timezone=settings.timezone),
-        id="friday_failsafe",
+        sunday_failsafe_job,
+        CronTrigger(day_of_week="sun", hour=18, minute=0, timezone=settings.timezone),
+        id="sunday_failsafe",
         replace_existing=True,
         misfire_grace_time=7200,
     )
@@ -202,7 +202,7 @@ async def main():
         "scheduler_started",
         timezone=settings.timezone,
         weekly=f"{settings.weekly_run_day} {settings.weekly_run_hour}:{settings.weekly_run_minute:02d}",
-        failsafe="friday 16:00",
+        failsafe="sunday 18:00",
         daily_urgent="08:00",
         thursday_alert="09:00",
     )

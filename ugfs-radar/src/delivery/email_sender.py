@@ -37,7 +37,8 @@ def _build_html_body(
     run_date: date,
 ) -> str:
     total = len(opportunities)
-    qualified = sum(1 for o in opportunities if (o.score or 0) >= 50)
+    go_count = sum(1 for o in opportunities if (o.score or 0) >= 80)
+    study_count = sum(1 for o in opportunities if 60 <= (o.score or 0) < 80)
     high = sum(1 for o in opportunities if (o.score or 0) >= 70)
     urgent = sum(1 for o in opportunities if o.is_urgent)
 
@@ -80,7 +81,7 @@ def _build_html_body(
             (deadline ≤ 7 jours)
           </div>
           <div style="color:#7f1d1d;font-size:13px;margin-top:4px;">
-            À traiter en priorité — voir l'onglet « Toutes opportunités » du fichier joint.
+            À traiter en priorité — voir l'onglet <strong>GO — Prioritaire</strong> du fichier joint.
           </div>
         </div>
         """
@@ -116,9 +117,9 @@ def _build_html_body(
           </p>
           <p style="margin:0 0 18px 0;color:#1f2937;font-size:15px;line-height:1.55;">
             Voici la synthèse hebdomadaire de la veille automatisée UGFS-Radar.
-            <strong>{total}</strong> opportunités ont été détectées cette semaine,
-            dont <strong>{qualified}</strong> qualifiées (score ≥ 50)
-            et <strong>{high}</strong> prioritaires (score ≥ 70).
+            <strong>{total}</strong> opportunités ont été détectées cette semaine :
+            <strong style="color:#16a34a;">{go_count} GO prioritaires</strong> (score ≥ 80)
+            et <strong style="color:#ca8a04;">{study_count} à étudier</strong> (score 60–79).
           </p>
 
           {urgent_banner}
@@ -132,14 +133,37 @@ def _build_html_body(
           </table>
 
           <p style="margin:24px 0 18px 0;color:#1f2937;font-size:15px;line-height:1.55;">
-            Le détail complet est dans le fichier Excel joint :
+            Le détail complet est dans le fichier Excel joint ({go_count + study_count} AOs qualifiées) :
           </p>
-          <ul style="color:#374151;font-size:14px;line-height:1.8;">
-            <li><strong>Onglet 1</strong> · Dashboard synthèse</li>
-            <li><strong>Onglet 2</strong> · Toutes les opportunités triées par score</li>
-            <li><strong>Onglet 3</strong> · Fiches détaillées par opportunité</li>
-            <li><strong>Onglet 4</strong> · Comparaison avec l'historique UGFS</li>
-          </ul>
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:8px;">
+            <tr>
+              <td style="padding:8px 12px;background:#f0fdf4;border-left:4px solid #16a34a;border-radius:4px;margin-bottom:4px;">
+                <strong style="color:#15803d;">✅ Onglet 1 — GO Prioritaire</strong>
+                <span style="color:#374151;font-size:13px;"> · {go_count} opportunité{"s" if go_count != 1 else ""} score ≥ 80 — à soumettre</span>
+              </td>
+            </tr>
+            <tr><td style="padding:3px 0;"></td></tr>
+            <tr>
+              <td style="padding:8px 12px;background:#fffbeb;border-left:4px solid #ca8a04;border-radius:4px;">
+                <strong style="color:#92400e;">🔍 Onglet 2 — À étudier</strong>
+                <span style="color:#374151;font-size:13px;"> · {study_count} opportunité{"s" if study_count != 1 else ""} score 60–79 — à analyser</span>
+              </td>
+            </tr>
+            <tr><td style="padding:3px 0;"></td></tr>
+            <tr>
+              <td style="padding:8px 12px;background:#f8fafc;border-left:4px solid #64748b;border-radius:4px;">
+                <strong style="color:#334155;">📋 Onglet 3 — Toutes opportunités</strong>
+                <span style="color:#374151;font-size:13px;"> · {total} AOs avec colonne Décision interne (Go / No-Go / À confirmer)</span>
+              </td>
+            </tr>
+            <tr><td style="padding:3px 0;"></td></tr>
+            <tr>
+              <td style="padding:8px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:4px;">
+                <strong style="color:#0369a1;">📊 Onglet 4 — Stats RL</strong>
+                <span style="color:#374151;font-size:13px;"> · Métriques d'apprentissage et performance du scoring</span>
+              </td>
+            </tr>
+          </table>
 
           <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px 18px;
                       margin:24px 0;border-radius:6px;">
@@ -173,8 +197,12 @@ def _build_html_body(
 
 def _build_subject(opportunities: Sequence[Opportunity], run_date: date) -> str:
     total = len(opportunities)
+    go_count = sum(1 for o in opportunities if (o.score or 0) >= 80)
     urgent = sum(1 for o in opportunities if o.is_urgent)
-    base = f"UGFS-Radar · Édition du {run_date.strftime('%d/%m/%Y')} · {total} opportunités"
+    base = (
+        f"UGFS-Radar · {run_date.strftime('%d/%m/%Y')} · "
+        f"✅ {go_count} GO · {total} détectées"
+    )
     if urgent > 0:
         return f"{base} · ⚠️ {urgent} urgente{'s' if urgent > 1 else ''}"
     return base

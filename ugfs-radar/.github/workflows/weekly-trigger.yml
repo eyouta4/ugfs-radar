@@ -1,7 +1,7 @@
-name: Weekly Run — Monday 7h Tunis
+name: Weekly Run — Wednesday 20h Tunis
 
-# Déclenche le run hebdomadaire UGFS-Radar chaque lundi à 6h UTC (= 7h Tunis UTC+1).
-# Contournement fiable du cron Railway qui peut être instable.
+# Déclenche le run hebdomadaire UGFS-Radar chaque mercredi à 19h UTC (= 20h Tunis UTC+1).
+# En été (UTC+2), ajuster à 18h UTC si besoin (ou laisser ainsi car la marge 1h est acceptable).
 #
 # Secrets GitHub requis :
 #   UGFS_API_URL      : URL du service API Railway, ex. https://ugfs-radar-api.up.railway.app
@@ -9,7 +9,7 @@ name: Weekly Run — Monday 7h Tunis
 
 on:
   schedule:
-    - cron: "0 6 * * 1"   # lundi 6h UTC = 7h Tunis (UTC+1 hiver / UTC+2 été → ajuster si besoin)
+    - cron: "0 19 * * 3"   # mercredi 19h UTC = 20h Tunis (UTC+1 hiver)
   workflow_dispatch:        # déclenchement manuel possible depuis l'UI GitHub
 
 jobs:
@@ -19,19 +19,50 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Validate secrets
+        run: |
+          if [ -z "${{ secrets.UGFS_API_URL }}" ]; then
+            echo "ERROR: UGFS_API_URL secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.API_FEEDBACK_TOKEN }}" ]; then
+            echo "ERROR: API_FEEDBACK_TOKEN secret is not set"
+            exit 1
+          fi
+          echo "Secrets validated."
+
+      - name: Wait for API to be healthy
+        env:
+          UGFS_API_URL: ${{ secrets.UGFS_API_URL }}
+        run: |
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${UGFS_API_URL}/health" --max-time 10 || echo "000")
+            echo "Health check attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "API is healthy."
+              break
+            fi
+            if [ "$i" = "5" ]; then
+              echo "ERROR: API not healthy after 5 attempts"
+              exit 1
+            fi
+            sleep 15
+          done
+
       - name: Trigger via API
         env:
           UGFS_API_URL: ${{ secrets.UGFS_API_URL }}
           API_FEEDBACK_TOKEN: ${{ secrets.API_FEEDBACK_TOKEN }}
         run: |
           set -e
-          echo "Triggering UGFS-Radar weekly run..."
+          echo "Triggering UGFS-Radar weekly run (mercredi 20h Tunis)..."
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${UGFS_API_URL}/api/feedback/trigger-weekly" \
             -H "X-Trigger-Token: ${API_FEEDBACK_TOKEN}" \
             -H "Content-Type: application/json" \
             --retry 3 \
             --retry-delay 10 \
+            --retry-on-http-error \
             --max-time 30)
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
@@ -42,6 +73,11 @@ jobs:
 
           if [ "$HTTP_CODE" -ne 200 ]; then
             echo "ERROR: API returned HTTP $HTTP_CODE"
+            echo "Troubleshooting:"
+            echo "  1. Check Railway API service is running"
+            echo "  2. Verify UGFS_API_URL points to the correct Railway deployment"
+            echo "  3. Verify API_FEEDBACK_TOKEN matches Railway env var API_FEEDBACK_TOKEN"
+            echo "  4. Check Railway logs for startup errors (missing ANTHROPIC_API_KEY, etc.)"
             exit 1
           fi
           echo "Weekly run triggered successfully."
