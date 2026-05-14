@@ -18,6 +18,7 @@ Pourquoi CoT vs extraction directe ?
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date
 
@@ -55,11 +56,38 @@ _NOGO_URL_PATTERNS = [
 ]
 
 
+_GENERIC_TITLES = {
+    "actualités", "actualites", "news", "accueil", "home", "homepage",
+    "blog", "publications", "articles", "press", "presse", "media",
+    "events", "événements", "evenements", "about", "à propos", "a propos",
+    "contact", "search", "recherche", "results", "résultats", "resultats",
+    "archive", "archives", "feed", "rss", "sitemap", "404", "error",
+    "login", "signin", "register", "tenders", "appels d'offres",
+    "opportunities", "opportunités", "funding", "grants",
+}
+
+
 def pre_filter(raw: RawOpportunity) -> bool:
     """Retourne True si l'AO est évidemment NO-GO sans besoin du LLM."""
-    title_lower = (raw.title or "").lower()
+    title = (raw.title or "").strip()
+    title_lower = title.lower()
     url_lower = (raw.url or "").lower()
     text_lower = (raw.raw_text or "")[:500].lower()
+
+    # Titre trop court ou générique → faux positif garanti
+    if len(title) < 15:
+        logger.info("pre_filter_short_title", title=title)
+        return True
+
+    # Titre générique (une seule entrée de la liste noire)
+    if title_lower in _GENERIC_TITLES:
+        logger.info("pre_filter_generic_title", title=title)
+        return True
+
+    # Titre sans aucun contenu thématique (1 seul mot, trop ambigu)
+    if len(title.split()) <= 1:
+        logger.info("pre_filter_single_word_title", title=title)
+        return True
 
     for kw in _NOGO_TITLE_KEYWORDS:
         if kw in title_lower or kw in text_lower:
@@ -313,7 +341,10 @@ async def _call_anthropic(system: str, user: str, temperature: float = 0.15) -> 
 async def _call_groq(system: str, user: str, temperature: float = 0.15) -> str:
     """
     Fallback Groq (Llama 3.3 70B) — API OpenAI-compatible, gratuit.
-    https://console.groq.com — 14 400 req/jour gratuits.
+    https://console.groq.com — 14 400 req/jour, ~30 RPM tier gratuit.
+
+    Retry automatique sur 429 (rate limit) : attend le header retry-after
+    ou 65s par défaut, jusqu'à 3 tentatives.
     """
     import httpx
     settings = get_settings()
@@ -331,17 +362,35 @@ async def _call_groq(system: str, user: str, temperature: float = 0.15) -> str:
         "max_tokens": 2500,
         "response_format": {"type": "json_object"},  # force JSON
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        r = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {groq_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
+    max_attempts = 4
+    for attempt in range(1, max_attempts + 1):
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if r.status_code == 429:
+            # Respecter le header retry-after si présent, sinon attendre 65s
+            retry_after = int(r.headers.get("retry-after", 65))
+            retry_after = max(retry_after, 5)   # toujours ≥ 5s
+            logger.warning(
+                "groq_rate_limited",
+                attempt=attempt,
+                retry_after_s=retry_after,
+                max_attempts=max_attempts,
+            )
+            if attempt < max_attempts:
+                await asyncio.sleep(retry_after)
+                continue
+            # Dernière tentative échouée
+            r.raise_for_status()
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"] or "{}"
+    raise RuntimeError("Groq: nombre maximum de tentatives dépassé (429 persistant)")
 
 
 async def _call_llm(system: str, user: str, temperature: float = 0.15) -> str:

@@ -50,6 +50,7 @@ logger = get_logger(__name__)
 
 MAX_OPPS_PER_RUN = 50          # plafond LLM : top 50 pré-scorés par mots-clés
 MAX_CONCURRENT_LLM = 4         # respecte rate limit Claude (4 appels simultanés)
+GROQ_RPM_DELAY = 2.5           # délai entre appels Groq (tier gratuit ≈ 30 RPM → 2s min)
 
 
 async def _process_one(
@@ -185,15 +186,35 @@ async def main() -> dict:
         pre_filtered = pre_filtered[:MAX_OPPS_PER_RUN]
     deduped = pre_filtered
 
-    # 5. Analyse + scoring en parallèle
+    # 5. Analyse + scoring
     embedder = VoyageEmbedder()
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
+    settings_llm = get_settings()
 
-    tasks = [
-        _process_one(raw, embedder, weights, semaphore)
-        for raw in deduped
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=False)
+    # Groq free tier : ~30 RPM → traitement séquentiel avec délai pour éviter les 429.
+    # Anthropic : parallélisme normal (semaphore à 4).
+    groq_only = not settings_llm.anthropic_api_key and bool(settings_llm.groq_api_key)
+
+    if groq_only:
+        logger.info(
+            "llm_mode_groq_sequential",
+            n=len(deduped),
+            delay_s=GROQ_RPM_DELAY,
+        )
+        results = []
+        sem1 = asyncio.Semaphore(1)
+        for i, raw in enumerate(deduped):
+            if i > 0:
+                await asyncio.sleep(GROQ_RPM_DELAY)   # ≤ 24 RPM → sous la limite
+            result = await _process_one(raw, embedder, weights, sem1)
+            results.append(result)
+            logger.debug("groq_progress", done=i + 1, total=len(deduped))
+    else:
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
+        tasks = [
+            _process_one(raw, embedder, weights, semaphore)
+            for raw in deduped
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
 
     # 6. Persistence
     n_new = 0
