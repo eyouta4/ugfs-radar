@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     # === Scheduler ===
     timezone: str = Field(default="Africa/Tunis")
-    weekly_run_day: str = Field(default="wed")   # mercredi
+    weekly_run_day: str = Field(default="thu")   # jeudi
     weekly_run_hour: int = Field(default=20)     # 20h00 Tunis
     weekly_run_minute: int = Field(default=0)
 

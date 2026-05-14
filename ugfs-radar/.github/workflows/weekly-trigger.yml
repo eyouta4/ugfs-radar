@@ -1,6 +1,6 @@
-name: Weekly Run — Wednesday 20h Tunis
+name: Weekly Run — Thursday 20h Tunis
 
-# Déclenche le run hebdomadaire UGFS-Radar chaque mercredi à 19h UTC (= 20h Tunis UTC+1).
+# Déclenche le run hebdomadaire UGFS-Radar chaque jeudi à 19h UTC (= 20h Tunis UTC+1).
 # En été (UTC+2), ajuster à 18h UTC si besoin (ou laisser ainsi car la marge 1h est acceptable).
 #
 # Secrets GitHub requis :
@@ -9,7 +9,7 @@ name: Weekly Run — Wednesday 20h Tunis
 
 on:
   schedule:
-    - cron: "0 19 * * 3"   # mercredi 19h UTC = 20h Tunis (UTC+1 hiver)
+    - cron: "0 19 * * 4"   # jeudi 19h UTC = 20h Tunis (UTC+1 hiver)
   workflow_dispatch:        # déclenchement manuel possible depuis l'UI GitHub
 
 jobs:

@@ -2,16 +2,16 @@
 scripts/scheduler.py — Daemon APScheduler (worker Railway).
 
 Déclenchements :
-  - Mercredi 20h00 (Africa/Tunis) → run_weekly.main()        ← PRIORITAIRE
-  - Dimanche 18h00                → run_weekly.main() si pas encore fait cette semaine (failsafe)
-  - Tous les jours 08h00          → check deadlines urgentes (Teams + email)
-  - Jeudi 09h00                   → alerte deadline J-7 pour toutes AOs avec deadline la semaine suivante
-  - Mensuel 1er du mois 03h00     → recalibration des poids ML
+  - Jeudi 20h00 (Africa/Tunis) → run_weekly.main()           ← PRIORITAIRE
+  - Dimanche 18h00             → run_weekly.main() si pas encore fait cette semaine (failsafe)
+  - Tous les jours 08h00       → check deadlines urgentes (Teams + email)
+  - Vendredi 09h00             → alerte deadline J-7 pour AOs avec deadline la semaine suivante
+  - Mensuel 1er du mois 03h00  → recalibration des poids ML
 
 Architecture de fiabilité :
   1. GitHub Actions (principal)    → POST /api/feedback/trigger-weekly
   2. APScheduler worker (fallback) → run_weekly directement si Actions échoue
-  3. Le dimanche est un 2e filet : si mercredi ET GitHub Actions ont tous deux échoué,
+  3. Le dimanche est un 2e filet : si jeudi ET GitHub Actions ont tous deux échoué,
      le run se déclenche dimanche avec les AOs de la semaine entière.
 """
 from __future__ import annotations

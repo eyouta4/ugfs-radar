@@ -83,27 +83,44 @@ nogo_preflight = pre_filter
 # ============================================================
 
 _POSITIVE_KEYWORDS = [
-    # Géographies prioritaires
+    # Géographies prioritaires (Afrique + Europe synergie)
     "tunisia", "tunisie", "maghreb", "mena", "africa", "afrique",
     "north africa", "afrique du nord", "sub-saharan", "subsaharan",
     "senegal", "morocco", "maroc", "egypt", "egypte", "west africa",
-    # Thèmes clés
+    "east africa", "tanzania", "tanzanie", "sierra leone", "kenya",
+    "europe", "european union", "horizon", "afrique subsaharienne",
+    # Thèmes énergie / climat (forte priorité TGF — data Teams 2026)
     "climate", "climatique", "green", "vert", "renewable", "renouvelable",
     "clean energy", "energie propre", "solar", "solaire", "wind energy",
+    "mini-grid", "mini grid", "off-grid", "energy storage", "bess",
+    "energy transition", "transition energetique", "productive use energy",
+    "biomass", "biomasse", "clean cooking", "bioenergy", "bioenergie",
+    "photovoltaic", "pv", "energy access", "decentralized energy",
+    # Thèmes eau / ocean (Blue Bond)
     "blue economy", "ocean", "water", "eau", "maritime",
+    "water resilience", "irrigation", "desalination",
+    # Thèmes agri (Seed of Change)
     "agritech", "agriculture", "food security", "securite alimentaire",
-    # Types d'opportunités
+    "agrifi", "food value chain", "smallholder", "cold chain", "agro",
+    # Types d'opportunités prioritaires
     "blended finance", "impact investing", "impact finance",
     "asset management", "fund manager", "gestionnaire de fonds",
     "fund", "fonds", "investment", "investissement",
     "grant", "subvention", "mandate", "mandat",
-    "advisory", "appel à projets", "call for proposals",
+    "advisory", "technical assistance", "appel a projets",
+    "call for proposals", "call for eoi",
     "expression of interest", "manifestation d interet",
-    # Partenaires prioritaires
+    "request for proposals", "rfp", "tdr",
+    "project preparation", "co-development", "co-management",
+    # Partenaires prioritaires (= signal très fort)
     "giz", "afd", "gcf", "eib", "afdb", "ifc", "convergence",
     "mitigation action facility", "climate kic", "adaptation fund",
     "sifi", "agri-fi", "agrifi", "apia", "cieif", "cfye",
     "green climate fund", "fonds vert", "horizon europe",
+    "aecf", "get.invest", "preo", "carbon trust", "gsma",
+    "sogrea", "wikistartup", "jif", "aedib", "common fund for commodities",
+    "convergence finance", "proparco", "kfw", "undp", "unep",
+    "entrepreneurs catalytic hub", "african energy futures",
 ]
 
 

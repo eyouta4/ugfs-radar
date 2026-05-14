@@ -22,70 +22,95 @@ from src.config.settings import get_settings
 logger = get_logger(__name__)
 
 # ── Requêtes principales ────────────────────────────────────────────────────
+# Basées sur l'historique réel UGFS (Excel + Teams discussion mars-avril 2026)
 SERPAPI_QUERIES = [
     # === GCF / Fonds Vert — pilier TGF ===
     "green climate fund GCF Africa fund manager call proposals 2026",
-    "fonds vert pour le climat FVC Afrique appel à propositions 2026",
+    "fonds vert pour le climat FVC Afrique appel propositions gestionnaire 2026",
     "GCF accredited entity fund manager Africa MENA 2026",
-    "climate finance fund manager mandate Africa North 2026",
+    "climate finance fund manager mandate Africa North Tunisia 2026",
 
     # === Blended finance / emerging fund managers ===
     "emerging fund manager blended finance Africa call 2026",
     "call for fund managers Africa climate impact 2026",
     "blended finance fund manager mandate Africa MENA 2026",
     "convergence blended finance Africa call proposals 2026",
+    "financial intermediary asset manager Africa call 2026",
 
-    # === Partenaires institutionnels clés ===
-    "GIZ AFD appel à projets Afrique Tunisie fonds 2026",
-    "AfDB African Development Bank fund manager mandate Africa 2026",
+    # === Partenaires institutionnels clés (historique soumissions UGFS) ===
     "mitigation action facility call for projects Africa 2026",
-    "adaptation fund call for proposals Africa 2026",
-    "climate KIC call expression of interest fund Africa 2026",
+    "adaptation fund call for proposals Africa accredited 2026",
+    "climate KIC ClimAccelerator call expression interest 2026",
+    "GIZ AFD appel projets Afrique Tunisie fonds 2026",
+    "AfDB fund manager mandate advisory Africa 2026",
+    "APIA Tunisie appel projets fonds vert GCF 2026",
+    "CIEIF climate intervention environmental impact fund 2026",
+    "entrepreneurs catalytic hub Africa grant 2026",
+
+    # === Énergie renouvelable + mini-grids Afrique (Teams discussion) ===
+    "mini-grid solar Africa fund manager call proposals 2026",
+    "off-grid renewable energy Africa advisory mandate 2026",
+    "productive use energy Africa grant fund 2026",
+    "PREO GET.invest productive use renewable energy Africa 2026",
+    "SOGREA off-grid renewable energy acceleration Africa 2026",
+    "carbon trust clean energy Africa fund 2026",
+    "solar energy Tunisia Africa project preparation fund 2026",
 
     # === Blue economy / water ===
     "blue economy fund Mediterranean Africa call 2026",
-    "SIFI SDG impact finance initiative water ocean Africa 2026",
+    "SIFI SDG impact finance water ocean Africa 2026",
     "water resilience fund Africa call proposals 2026",
 
     # === Agritech / food / SME ===
-    "AgriFI Africa call for proposals SME agriculture 2026",
-    "agritech food security grant Africa fund 2026",
+    "AgriFI Africa call proposals SME agriculture 2026",
     "common fund commodities Africa call proposals 2026",
+    "agri-food value chain Africa fund grant 2026",
 
-    # === LinkedIn — source principale UGFS ===
+    # === LinkedIn — source principale UGFS (historique posts détectés) ===
     "site:linkedin.com call for proposals Africa fund manager climate 2026",
-    "site:linkedin.com appel à projets fonds Afrique gestionnaire 2026",
-    "site:linkedin.com emerging fund manager Africa blended finance 2026",
+    "site:linkedin.com appel projets fonds Afrique gestionnaire 2026",
+    "site:linkedin.com blended finance Africa fund manager call 2026",
     "site:linkedin.com grant opportunity climate Africa MENA 2026",
+    "site:linkedin.com expression of interest fund Africa advisory 2026",
+    "site:linkedin.com mini-grid solar Africa fund mandate 2026",
+    "site:linkedin.com technical assistance Africa clean energy fund 2026",
 
-    # === EU / Horizon Europe + Africa ===
+    # === EU / Horizon Europe + Africa (synergie co-investissement) ===
     "Horizon Europe Africa Initiative call 2026 fund climate",
-    "site:ec.europa.eu call for proposals Africa 2026 fund climate",
+    "JIF joint innovation facility Africa Europe 2026 call",
     "EU Africa co-fund climate blended finance 2026",
+    "Africa EU cooperation renewable energy fund manager 2026",
 
-    # === Africa expansion + Europe synergie ===
-    "IFC world bank Africa fund call proposals 2026 climate",
+    # === Advisory / Technical Assistance mandats ===
+    "AECF technical assistance Africa clean energy portfolio 2026",
+    "call for proposals advisory mandate Africa green finance 2026",
+    "business advisory mandate Africa climate fund 2026",
+
+    # === Autres DFI ===
     "UNDP UNEP Africa call fund manager climate 2026",
+    "IFC world bank Africa fund proposals climate 2026",
     "KfW Proparco AFD Afrique appel gestionnaire fonds 2026",
 ]
 
 # ── Requêtes bonus (si quota disponible) ────────────────────────────────────
 BONUS_QUERIES = [
-    "Finnpartnership call for proposals Africa 2026 fund",
     "CFYE challenge fund youth enterprise Africa 2026",
-    "DRK Foundation Africa funding 2026 impact",
-    "SDG Impact Finance SIFI call 2026 Africa water",
-    "Renew Capital Africa fund 2026",
+    "SDG Impact Finance SIFI call 2026 Africa water ocean",
     "Africa50 fund manager call 2026",
     "Proparco appel fonds impact Afrique 2026",
     "FMO Netherlands Africa fund manager 2026",
-    "appel à projets fonds climatique Afrique francophone 2026",
-    "call for applications climate fund sub-saharan Africa 2026",
-    "JIF joint innovation facility Africa Europe 2026",
-    "APIA Tunisie appel à projets fonds vert 2026",
-    "Africa EU cooperation fund climate finance 2026",
-    "Kigali Amendment fund manager Africa 2026",
-    "COP fund manager Africa climate 2026",
+    "appel projets fonds climatique Afrique francophone 2026",
+    "GSMA innovation fund green transition mobile Africa 2026",
+    "OPEN Fund women-led energy Africa 2026",
+    "African energy futures call proposals 2026",
+    "SADC TFCA financing facility Africa green 2026",
+    "timbuktoo UNDP pan-african incubation agritech 2026",
+    "AEDIB Africa Europe digital innovation bridge 2026",
+    "site:devex.com fund manager Africa climate advisory 2026",
+    "site:reliefweb.int fund manager advisory Africa 2026",
+    "Appel offre Tunisie energie renouvelable solaire 2026",
+    "Kébili PV BESS Tunisia renewable energy fund 2026",
+    "DRK Foundation social enterprise Africa funding 2026",
 ]
 
 

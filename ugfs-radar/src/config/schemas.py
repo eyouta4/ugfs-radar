@@ -41,7 +41,8 @@ class Theme(str, Enum):
 
 class SourceKind(str, Enum):
     """Type de source de scraping."""
-    INSTITUTIONAL = "institutional"          # AfDB, IFC, EU Funding Portal
+    INSTITUTIONAL = "institutional"          # AfDB, IFC, EU Funding Portal, World Bank, UNDP
+    AGGREGATOR = "aggregator"                # Devex, ReliefWeb, portails multi-sources
     LINKEDIN = "linkedin"
     GOOGLE_CSE = "google_cse"
     RSS = "rss"
