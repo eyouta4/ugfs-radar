@@ -271,47 +271,111 @@ Réponds uniquement avec le JSON valide, sans aucun texte avant ou après.
 
 
 # ============================================================
-# Client Anthropic
+# Clients LLM — Anthropic (principal) + Groq (fallback gratuit)
 # ============================================================
 
-_client: AsyncAnthropic | None = None
+_anthropic_client: AsyncAnthropic | None = None
+_groq_client = None   # httpx async, pas de SDK
 
 
-def _get_client() -> AsyncAnthropic:
-    global _client
-    if _client is None:
+def _get_anthropic_client() -> AsyncAnthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
         settings = get_settings()
         if not settings.anthropic_api_key:
             raise RuntimeError("ANTHROPIC_API_KEY non configurée")
-        _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-    return _client
+        _anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    return _anthropic_client
 
 
-async def _call_llm(system: str, user: str, temperature: float = 0.15) -> str:
-    """Appel LLM Claude avec retry exponentiel et prompt caching sur le system."""
+async def _call_anthropic(system: str, user: str, temperature: float = 0.15) -> str:
+    """Appel Claude avec retry exponentiel et prompt caching."""
     settings = get_settings()
     async for attempt in AsyncRetrying(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=2, max=20),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=2, min=2, max=15),
         retry=retry_if_exception_type(APIStatusError),
         reraise=True,
     ):
         with attempt:
-            response = await _get_client().messages.create(
+            response = await _get_anthropic_client().messages.create(
                 model=settings.anthropic_model,
                 max_tokens=2500,
-                system=[
-                    {
-                        "type": "text",
-                        "text": system,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
+                system=[{"type": "text", "text": system,
+                          "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user}],
                 temperature=temperature,
             )
             return response.content[0].text or "{}"
     return "{}"
+
+
+async def _call_groq(system: str, user: str, temperature: float = 0.15) -> str:
+    """
+    Fallback Groq (Llama 3.3 70B) — API OpenAI-compatible, gratuit.
+    https://console.groq.com — 14 400 req/jour gratuits.
+    """
+    import httpx
+    settings = get_settings()
+    groq_key = settings.groq_api_key
+    if not groq_key:
+        raise RuntimeError("GROQ_API_KEY non configurée")
+
+    payload = {
+        "model": settings.groq_model,   # "llama-3.3-70b-versatile"
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+        "temperature": temperature,
+        "max_tokens": 2500,
+        "response_format": {"type": "json_object"},  # force JSON
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"] or "{}"
+
+
+async def _call_llm(system: str, user: str, temperature: float = 0.15) -> str:
+    """
+    Stratégie : Anthropic (Claude) en priorité, Groq (Llama) en fallback.
+
+    Si Anthropic échoue (crédit épuisé, quota, erreur réseau) → bascule sur Groq.
+    Si Groq configuré mais Anthropic absent → Groq directement.
+    """
+    settings = get_settings()
+    has_anthropic = bool(settings.anthropic_api_key)
+    has_groq = bool(settings.groq_api_key)
+
+    # Priorité 1 : Anthropic Claude
+    if has_anthropic:
+        try:
+            result = await _call_anthropic(system, user, temperature)
+            logger.debug("llm_provider_used", provider="anthropic")
+            return result
+        except Exception as exc:
+            err_str = str(exc)
+            # Crédit épuisé ou quota → basculer sur Groq sans retry
+            if "credit balance" in err_str or "rate_limit" in err_str or "529" in err_str:
+                logger.warning("anthropic_fallback_to_groq", reason=err_str[:120])
+            else:
+                raise  # Erreur inattendue → propager
+
+    # Priorité 2 : Groq Llama (fallback gratuit)
+    if has_groq:
+        result = await _call_groq(system, user, temperature)
+        logger.info("llm_provider_used", provider="groq_fallback")
+        return result
+
+    raise RuntimeError("Aucun LLM disponible — configure ANTHROPIC_API_KEY ou GROQ_API_KEY")
 
 
 # ============================================================
