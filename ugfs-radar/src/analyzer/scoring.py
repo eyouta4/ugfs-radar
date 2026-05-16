@@ -38,6 +38,7 @@ from typing import Any
 from src.config import (
     AnalyzedOpportunity,
     Decision,
+    OpportunityType,
     RawOpportunity,
     ScoredOpportunity,
 )
@@ -194,19 +195,29 @@ def score_vehicle(
     profile: dict[str, Any],
 ) -> tuple[int, str]:
     """
-    Score véhicule : 100 si l'AO matche un véhicule actif d'UGFS.
-    On regarde d'abord le `vehicle_match` extrait par le LLM, puis fallback
-    sur un matching keywords sur le texte brut.
+    Score véhicule : 100 si l'AO matche un véhicule actif d'UGFS ET est actionnable.
+
+    Règle de pondération de l'actionnabilité :
+      - opportunity_type connu (grant/asset_management/advisory/mandate) → plein score
+      - opportunity_type == unknown (article/event/page générique) → score réduit à 50
     """
     vehicles = profile.get("vehicles", [])
     if not vehicles:
         return 0, "Aucun véhicule actif dans le profil"
 
+    # Facteur d'actionnabilité : réduction si type inconnu (article/event)
+    is_actionable = analyzed.opportunity_type not in (
+        OpportunityType.UNKNOWN, None
+    )
+    action_factor = 1.0 if is_actionable else 0.5  # 50% si type inconnu
+
     # 1. Match explicite par le LLM
     if analyzed.vehicle_match:
         for v in vehicles:
             if v.get("code") == analyzed.vehicle_match:
-                return 100, f"Match explicite véhicule {v['name']}"
+                pts = round(100 * action_factor)
+                suffix = "" if is_actionable else " (type inconnu — réduit)"
+                return pts, f"Match explicite véhicule {v['name']}{suffix}"
 
     # 2. Fallback keywords
     text_blob = " ".join([
@@ -219,7 +230,9 @@ def score_vehicle(
     for v in vehicles:
         kws = v.get("keywords", [])
         if _any_keyword_in(text_blob, kws):
-            return 100, f"Match keywords véhicule {v['name']}"
+            pts = round(100 * action_factor)
+            suffix = "" if is_actionable else " (type inconnu — réduit)"
+            return pts, f"Match keywords véhicule {v['name']}{suffix}"
 
     return 0, "Aucun véhicule UGFS matché"
 
@@ -386,6 +399,26 @@ def compute_score(
     }
 
     score = round(sum(breakdown.values()))
+
+    # 3b. Pénalité "non-actionnable" : si le LLM a identifié un type inconnu
+    # (article de presse, événement, page générique), réduire le score.
+    # La réduction est progressive selon la décision LLM :
+    #   - LLM dit NO_GO + type unknown → -20pts (probablement un article)
+    #   - LLM dit BORDERLINE + type unknown → -10pts
+    #   - LLM dit GO + type unknown → 0pts (LLM a quand même validé)
+    if analyzed.opportunity_type == OpportunityType.UNKNOWN:
+        llm_decision = analyzed.preliminary_decision
+        if llm_decision == Decision.NO_GO:
+            penalty = 20
+        elif llm_decision == Decision.BORDERLINE:
+            penalty = 10
+        else:
+            penalty = 5  # type unknown mais LLM dit GO — petite pénalité
+        score = max(0, score - penalty)
+        breakdown["type_unknown_penalty"] = float(-penalty)
+        rationale["type_unknown_penalty"] = (
+            f"Pénalité -{penalty}pts : type inconnu (article/event/page générique probable)"
+        )
 
     # 4. Boost similarité — si similarité > seuil, on push de +10 pts
     if similarity_to_past_go >= settings.similarity_boost_threshold:

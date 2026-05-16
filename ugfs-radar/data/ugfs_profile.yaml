@@ -338,6 +338,24 @@ priority_partners:
 # CRITÈRES DE DISQUALIFICATION IMMÉDIATE
 # ============================================================
 disqualification_rules:
+  - rule: "Article de presse, annonce institutionnelle, communiqué de presse — ce n'est PAS un appel ouvert"
+    field: "type"
+    examples:
+      - "EU boosts clean energy in Tunisia with €35.8 million grant → article EIB, pas un appel"
+      - "GCF welcomes new Accredited Entities → annonce GCF, pas un appel"
+      - "Ivory Coast designated as headquarters → news, pas un appel"
+      - "Fonds vert pour le climat: un portefeuille de 20 milliards → article FinDev, pas un appel"
+  - rule: "Événement, webinaire, dialogue, conférence — sans possibilité de candidature"
+    field: "type"
+    examples:
+      - "GCF Regional Dialogue with MENA → événement, pas un appel à proposals"
+      - "How blended finance can unlock bankable green projects → webinaire ESI-Africa"
+  - rule: "Page générique d'un site (homepage, page catégorie, annuaire, page pays)"
+    field: "type"
+    examples:
+      - "Green Climate Fund: Homepage → page d'accueil greenclimate.fund"
+      - "Country – Adaptation Fund /country/RG/ → page pays, pas un appel"
+      - "Climate Fund Managers | Green Economy → annuaire wearevuka.com"
   - rule: "Géographie strictement hors scope (Asie hors MENA, Amérique du Nord, Amérique Latine sans éligibilité Afrique)"
     field: "geography"
     examples:
@@ -360,6 +378,10 @@ disqualification_rules:
     examples:
       - "Renew Venture Lab — fondateurs startups seulement"
       - "Comcast Innovation Fund — open-source uniquement"
+  - rule: "Annonce de résultats (semi-finalists, laureats, award winners) → appel DÉJÀ FERMÉ"
+    field: "type"
+    examples:
+      - "Semi-Finalists Announced: A4FM First Call → appel A4FM déjà fermé"
 
 # ============================================================
 # SIGNAUX DE GO — PATTERNS HISTORIQUES UGFS (RÉELS)
@@ -424,13 +446,15 @@ priority_sources:
 # ============================================================
 scoring_weights:
   geography_match:       20   # primaire +20, secondaire +12, Europe +8
-  theme_match:           20   # green/blue/generaliste vs thèmes UGFS
-  vehicle_match:         25   # match avec un véhicule actif UGFS → très important
-  partner_match:         10   # partenaire prioritaire mentionné
+  theme_match:           18   # green/blue/generaliste vs thèmes UGFS
+  vehicle_match:         20   # match avec un véhicule actif UGFS (réduit de 25→20 pour limiter inflation)
+  partner_match:         12   # partenaire prioritaire mentionné (augmenté 10→12)
   deadline_feasibility:  10   # deadline réaliste (>= 14j restants)
   ticket_in_sweet_spot:   5   # montant dans la sweet spot
   language_match:         5   # langue fr/en préférée
-  similarity_to_past_go:  5   # similarité sémantique avec AOs soumis passés
+  similarity_to_past_go: 10   # similarité sémantique avec AOs soumis passés (augmenté 5→10)
+  # TOTAL = 100
+  # Note : le code applique en plus une pénalité -5 à -20pts si opportunity_type=unknown
 
 # ============================================================
 # BOUCLE D'APPRENTISSAGE

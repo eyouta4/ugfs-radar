@@ -55,6 +55,33 @@ _NOGO_URL_PATTERNS = [
     # linkedin.com/posts is intentionally NOT blocked — UGFS finds most opportunities there
 ]
 
+# Fragments de chemin d'URL qui indiquent une page non-actionnable
+# (page pays, webinaire, événement, catégorie générique)
+_NOGO_URL_PATH_FRAGMENTS = [
+    "/webinars/", "/webinar/",               # conférences/webinaires
+    "/events/event/", "pathfinder.org/events",  # agendas événements
+    "/country/",                             # pages pays Adaptation Fund, etc.
+    "wearevuka.com/investor-projects/",      # annuaire fonds
+    "federalgrantsinfo.com",                 # site agrégateur non spécialisé
+]
+
+# Patterns dans le TITRE qui signalent un article de presse ou annonce non-actionnable
+_LIKELY_NEWS_TITLE_PATTERNS = [
+    "semi-finalists announced",
+    "welcomes new accredited",
+    "designated as headquarters",
+    " expands into ",
+    "boosts clean energy",          # "EU boosts..." = article de presse
+    "receives €",                   # "Tunisia receives €..." = article de presse
+    "portfolio of $", "portefeuille de",
+    ": homepage", "homepage",
+    "to expand into regional",
+    "announces new ",
+    "announces the ",
+    " governance: ",
+    "gouvernance climatique",
+]
+
 
 _GENERIC_TITLES = {
     "actualités", "actualites", "news", "accueil", "home", "homepage",
@@ -88,6 +115,33 @@ def pre_filter(raw: RawOpportunity) -> bool:
     if len(title.split()) <= 1:
         logger.info("pre_filter_single_word_title", title=title)
         return True
+
+    # URL de page webinaire ou événement non-actionnable
+    for frag in _NOGO_URL_PATH_FRAGMENTS:
+        if frag in url_lower:
+            # Exception : si le titre contient "call for proposals" ou "appel" → laisser passer
+            if not any(x in title_lower for x in ["call for proposals", "appel à projets",
+                                                   "appel a projets", "expression of interest",
+                                                   "request for proposals", "rfp", "eoi"]):
+                logger.info("pre_filter_url_path", url=raw.url[:80], fragment=frag)
+                return True
+
+    # Homepage (URL racine du domaine sans chemin significatif)
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(raw.url or "")
+        path = parsed.path.rstrip("/")
+        if path in ("", "/") and parsed.netloc:
+            logger.info("pre_filter_homepage", url=raw.url[:80])
+            return True
+    except Exception:
+        pass
+
+    # Titre = pattern d'article de presse (non-actionnable direct)
+    for pat in _LIKELY_NEWS_TITLE_PATTERNS:
+        if pat in title_lower:
+            logger.info("pre_filter_news_title", title=title[:80], pattern=pat)
+            return True
 
     for kw in _NOGO_TITLE_KEYWORDS:
         if kw in title_lower or kw in text_lower:
@@ -222,6 +276,15 @@ MÉTHODE D'ANALYSE OBLIGATOIRE — CHAIN OF THOUGHT
 
 Tu DOIS raisonner en 3 étapes avant de produire le JSON :
 
+**ÉTAPE 0 — TYPE DE CONTENU (obligatoire, 1-2 phrases)**
+  AVANT TOUT, identifie le type de contenu de la page :
+  • Est-ce un APPEL OUVERT (Call for Proposals / EoI / RFP / Appel à Projets) ? → opportunity_type = grant/asset_management/advisory/mandate
+  • Est-ce un ARTICLE DE PRESSE ou ANNONCE d'une décision (ex: "EU boosts...", "AfDB announces...", "GCF welcomes...") ? → opportunity_type = "unknown", preliminary_decision = NO_GO
+  • Est-ce un ÉVÉNEMENT ou WEBINAIRE (dialogue, conference, webinar) ? → opportunity_type = "unknown", preliminary_decision = NO_GO
+  • Est-ce une PAGE GÉNÉRIQUE (homepage, page pays, annuaire) ? → opportunity_type = "unknown", preliminary_decision = NO_GO
+  ⚠️ RÈGLE CRITIQUE : Un article parlant d'une opportunité n'est PAS une opportunité actionnable.
+  Seul un appel OUVERT avec possibilité de soumettre une candidature peut être GO.
+
 **ÉTAPE 1 — ADMISSIBILITÉ (2-4 phrases)**
   • La deadline est-elle déjà passée (vs aujourd'hui) ?
   • La géographie est-elle 100% hors scope UGFS ?
@@ -245,6 +308,16 @@ Tu DOIS raisonner en 3 étapes avant de produire le JSON :
 
 Ce raisonnement va dans le champ `analyst_reasoning` du JSON.
 Après ce raisonnement, produis le JSON STRICT. Réponds UNIQUEMENT avec le JSON, sans markdown.
+
+⚠️ RAPPEL FINAL ANTI-FAUX-POSITIFS :
+  - "EU announces €35M grant for Tunisia" → TYPE=unknown, NO_GO (article, pas un appel)
+  - "GCF welcomes new entities" → TYPE=unknown, NO_GO (annonce, pas un appel ouvert)
+  - "Ivory Coast designated as GCF hub" → TYPE=unknown, NO_GO (news)
+  - "GCF Regional Dialogue" → TYPE=unknown, NO_GO (événement, pas un appel)
+  - "Semi-Finalists Announced" → TYPE=unknown, NO_GO (résultats, appel fermé)
+  - "Appel à Projets APIA 2026 : Transformation des Margines" → TYPE=grant, peut être GO
+  - "Convergence Blended Finance Accelerator for Fund Managers, Call opens May 19" → TYPE=grant, GO
+  - "Call for proposals | ACCF Portal" → TYPE=grant, GO
 """
 
 
@@ -480,6 +553,79 @@ async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None
     return analyzed
 
 
+def _parse_date_from_text(text: str) -> "date | None":
+    """
+    Extrait une date depuis un texte brut (deadline_text_raw, raw_text, etc.).
+    Supporte : "May 19, 2026", "19/05/2026", "2026-05-19", "19 May 2026", etc.
+    Retourne la première date future trouvée, ou None.
+    """
+    import re
+    from datetime import date as date_type
+
+    today = date_type.today()
+    text = text or ""
+
+    # Format ISO : 2026-05-19
+    iso_match = re.search(r"\b(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b", text)
+    if iso_match:
+        try:
+            d = date_type(int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3)))
+            if d >= today:
+                return d
+        except ValueError:
+            pass
+
+    # Format européen : 19/05/2026 ou 19.05.2026
+    eu_match = re.search(r"\b(0[1-9]|[12]\d|3[01])[./](0[1-9]|1[0-2])[./](20\d{2})\b", text)
+    if eu_match:
+        try:
+            d = date_type(int(eu_match.group(3)), int(eu_match.group(2)), int(eu_match.group(1)))
+            if d >= today:
+                return d
+        except ValueError:
+            pass
+
+    # Format anglais : May 19, 2026 / 19 May 2026 / May 2026
+    months = {
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12,
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+    # "May 19, 2026" or "May 19 2026"
+    month_day_year = re.search(
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
+        r"jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(20\d{2})\b",
+        text.lower()
+    )
+    if month_day_year:
+        try:
+            m = months[month_day_year.group(1)]
+            d = date_type(int(month_day_year.group(3)), m, int(month_day_year.group(2)))
+            if d >= today:
+                return d
+        except ValueError:
+            pass
+
+    # "19 May 2026"
+    day_month_year = re.search(
+        r"\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|"
+        r"jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(20\d{2})\b",
+        text.lower()
+    )
+    if day_month_year:
+        try:
+            m = months[day_month_year.group(2)]
+            d = date_type(int(day_month_year.group(3)), m, int(day_month_year.group(1)))
+            if d >= today:
+                return d
+        except ValueError:
+            pass
+
+    return None
+
+
 def _coerce(data: dict) -> dict:
     """Normalise la sortie LLM pour compatibilité Pydantic."""
     type_val = (data.get("opportunity_type") or "").lower()
@@ -518,6 +664,20 @@ def _coerce(data: dict) -> dict:
         data["vehicle_match"] = None
     elif vm:
         data["vehicle_match"] = vm.upper()
+
+    # Fallback deadline : si le LLM n'a pas parsé de date mais qu'un texte de deadline
+    # est présent (deadline_text_raw), on tente de l'extraire avec notre parser.
+    if data.get("deadline") is None:
+        raw_dl_text = data.get("deadline_text_raw") or ""
+        if raw_dl_text:
+            parsed_dl = _parse_date_from_text(raw_dl_text)
+            if parsed_dl:
+                data["deadline"] = parsed_dl
+                logger.info(
+                    "deadline_parsed_from_raw_text",
+                    raw_text=raw_dl_text[:80],
+                    parsed=parsed_dl.isoformat(),
+                )
 
     reasoning = data.get("analyst_reasoning")
     if isinstance(reasoning, str) and len(reasoning) > 2000:
