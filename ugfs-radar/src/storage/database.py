@@ -60,12 +60,24 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
 
 
 async def init_db() -> None:
-    """Crée les tables (en dev/test). En prod on utilise alembic."""
+    """Crée les tables + applique les migrations légères additives."""
     from .models import Base
+    from sqlalchemy import text
     engine = get_engine()
     async with engine.begin() as conn:
         # Activer pgvector
-        from sqlalchemy import text
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
+
+        # === Migrations additives (idempotentes) ===
+        # Ajouter colonne last_emailed_at si absente (anti-redondance inter-semaines)
+        await conn.execute(text("""
+            ALTER TABLE opportunities
+            ADD COLUMN IF NOT EXISTS last_emailed_at TIMESTAMP NULL
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_opportunities_last_emailed_at
+            ON opportunities (last_emailed_at)
+        """))
+
     logger.info("db_initialized")

@@ -129,6 +129,81 @@ class OpportunityRepo:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def list_for_weekly_email(
+        self,
+        run_started_at: datetime,
+        min_score: int = 35,
+    ) -> tuple[Sequence[Opportunity], Sequence[Opportunity]]:
+        """
+        Sélectionne les opportunités à inclure dans l'email hebdo, en évitant
+        la redondance inter-semaines.
+
+        Retourne (new_this_week, still_relevant) :
+          - new_this_week : jamais envoyées, ou ré-émergées après pause
+          - still_relevant : envoyées il y a > 21 jours et toujours sans décision
+                             client (rappel pour les AOs qui traînent)
+
+        Exclut systématiquement :
+          - les NO_GO (status='NO_GO' ou score=0)
+          - les déjà décidées par UGFS (client_decision='GO' ou 'SUBMITTED')
+          - les deadlines dépassées
+        """
+        today = date.today()
+
+        # Filtres de base communs
+        base_filters = (
+            (Opportunity.score >= min_score)
+            & (Opportunity.status != "NO_GO")
+            & ((Opportunity.deadline >= today) | (Opportunity.deadline.is_(None)))
+            & (
+                Opportunity.client_decision.is_(None)
+                | (Opportunity.client_decision.notin_(["GO", "SUBMITTED", "NO_GO"]))
+            )
+        )
+
+        # NEW : jamais envoyées (last_emailed_at NULL) OU envoyées avant ce run
+        new_stmt = (
+            select(Opportunity)
+            .where(base_filters)
+            .where(
+                Opportunity.last_emailed_at.is_(None)
+                | (Opportunity.last_emailed_at < run_started_at - timedelta(days=21))
+            )
+            .order_by(Opportunity.score.desc())
+        )
+        new_result = await self.session.execute(new_stmt)
+        new_opps = list(new_result.scalars().all())
+
+        # STILL_RELEVANT : déjà envoyée récemment mais toujours ouverte et sans décision
+        # On les inclut seulement si urgentes (deadline ≤ 14 jours)
+        relevant_cutoff = today + timedelta(days=14)
+        rel_stmt = (
+            select(Opportunity)
+            .where(base_filters)
+            .where(Opportunity.last_emailed_at.isnot(None))
+            .where(Opportunity.last_emailed_at >= run_started_at - timedelta(days=21))
+            .where(Opportunity.deadline.isnot(None))
+            .where(Opportunity.deadline <= relevant_cutoff)
+            .order_by(Opportunity.deadline.asc())
+            .limit(10)
+        )
+        rel_result = await self.session.execute(rel_stmt)
+        still_relevant = list(rel_result.scalars().all())
+
+        return new_opps, still_relevant
+
+    async def mark_emailed(self, opportunity_ids: list[int]) -> None:
+        """Marque une liste d'opportunités comme envoyées dans l'email courant."""
+        if not opportunity_ids:
+            return
+        now = datetime.utcnow()
+        stmt = (
+            update(Opportunity)
+            .where(Opportunity.id.in_(opportunity_ids))
+            .values(last_emailed_at=now)
+        )
+        await self.session.execute(stmt)
+
     async def list_urgent_unprocessed(self) -> Sequence[Opportunity]:
         """Opportunités urgentes (deadline ≤ 7j) non encore traitées par UGFS."""
         cutoff = date.today() + timedelta(days=7)
@@ -174,6 +249,56 @@ class OpportunityRepo:
             if sim >= threshold:
                 rows.append((opp, float(sim)))
         return rows
+
+    async def reapply_filters_to_recent(
+        self,
+        pre_filter_fn,
+        cutoff_days: int = 60,
+    ) -> int:
+        """
+        Re-applique le pre_filter sur les opportunités récentes en DB.
+        Utile après une mise à jour des règles de filtrage : les AOs scorées
+        avant le fix restaient en DB avec leur ancien (mauvais) score.
+
+        Args:
+            pre_filter_fn: fonction(RawOpportunity-like) → True si NO-GO
+            cutoff_days: ne touche que les opps des N derniers jours
+
+        Returns:
+            Nombre d'opportunités marquées NO_GO par cette repasse.
+        """
+        from src.config.schemas import RawOpportunity, SourceKind
+        cutoff = datetime.utcnow() - timedelta(days=cutoff_days)
+        stmt = (
+            select(Opportunity)
+            .where(Opportunity.discovered_at >= cutoff)
+            .where(Opportunity.status != "NO_GO")
+            .where(Opportunity.client_decision.is_(None))
+        )
+        result = await self.session.execute(stmt)
+        opps = result.scalars().all()
+
+        n_demoted = 0
+        for opp in opps:
+            try:
+                # Recrée un RawOpportunity-like pour le filtre
+                raw = RawOpportunity(
+                    title=opp.title,
+                    url=opp.url,
+                    source=opp.source or "rerun",
+                    source_kind=SourceKind(opp.source_kind) if opp.source_kind else SourceKind.MANUAL,
+                    raw_text=(opp.summary_executive or "")[:500] or "rerun-text",
+                )
+                if pre_filter_fn(raw):
+                    # Pré-filtre rejette → status NO_GO, score 0
+                    opp.status = "NO_GO"
+                    opp.score = 0
+                    n_demoted += 1
+            except Exception as e:
+                logger.warning("reapply_filter_err", opp_id=opp.id, error=str(e)[:120])
+                continue
+        await self.session.flush()
+        return n_demoted
 
     async def get_known_urls(self, cutoff_days: int = 30) -> set[str]:
         """URLs d'opportunités vues dans les N derniers jours (pour pré-dédup)."""

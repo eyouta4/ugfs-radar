@@ -20,7 +20,10 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from src.config.logger import get_logger
-from src.delivery.excel_builder import ALL_OPPS_COLUMNS
+# Index réels des colonnes dans l'Excel (depuis excel_builder.py)
+from src.delivery.excel_builder import (
+    COL_ID, COL_TITLE, COL_DECISION, COL_REASON,
+)
 from src.storage.database import init_db, session_scope
 from src.storage.repository import OpportunityRepo
 
@@ -28,10 +31,10 @@ logger = get_logger(__name__)
 
 VALID_DECISIONS = {"GO", "NO_GO", "BORDERLINE", "SUBMITTED"}
 
-COL_ID = ALL_OPPS_COLUMNS.index("ID")
-COL_TITLE = ALL_OPPS_COLUMNS.index("Titre")
-COL_DECISION = ALL_OPPS_COLUMNS.index("Décision interne (Go/No-Go)")
-COL_REASON = ALL_OPPS_COLUMNS.index("Raison décision")
+# L'onglet "Toutes opportunites" (sans accent, format actuel du builder)
+# avec données depuis la ligne 5 (titre L2, en-tête L4, données L5+).
+DATA_SHEET = "Toutes opportunites"
+DATA_START_ROW = 5
 
 
 async def ingest(path: Path, submitted_by: str) -> dict:
@@ -39,9 +42,17 @@ async def ingest(path: Path, submitted_by: str) -> dict:
         raise FileNotFoundError(path)
 
     wb = load_workbook(path, data_only=True, read_only=True)
-    sheet_name = "Toutes opportunités"
-    if sheet_name not in wb.sheetnames:
-        raise ValueError(f"Onglet '{sheet_name}' absent. Onglets: {wb.sheetnames}")
+    # Compat : accepte avec ou sans accent (anciens fichiers)
+    sheet_name = None
+    for candidate in (DATA_SHEET, "Toutes opportunités", "Opportunites"):
+        if candidate in wb.sheetnames:
+            sheet_name = candidate
+            break
+    if sheet_name is None:
+        raise ValueError(
+            f"Onglet de données introuvable. Attendu: '{DATA_SHEET}'. "
+            f"Onglets disponibles: {wb.sheetnames}"
+        )
     ws = wb[sheet_name]
 
     n_processed, n_skipped, errors = 0, 0, []
@@ -49,8 +60,16 @@ async def ingest(path: Path, submitted_by: str) -> dict:
 
     async with session_scope() as session:
         repo = OpportunityRepo(session)
-        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        for i, row in enumerate(
+            ws.iter_rows(min_row=DATA_START_ROW, values_only=True),
+            start=DATA_START_ROW,
+        ):
             if not row or row[COL_ID] is None:
+                continue
+            # Skip les lignes de légende (ID non numérique)
+            try:
+                opp_id = int(row[COL_ID])
+            except (ValueError, TypeError):
                 continue
             decision_raw = row[COL_DECISION]
             if not decision_raw:
@@ -58,18 +77,28 @@ async def ingest(path: Path, submitted_by: str) -> dict:
                 continue
             decision = str(decision_raw).strip().upper()
             if decision not in VALID_DECISIONS:
-                errors.append(f"Ligne {i}: décision invalide '{decision}'")
+                errors.append(f"Ligne {i}: décision invalide '{decision}' "
+                              f"(attendu: GO/NO_GO/BORDERLINE/SUBMITTED)")
                 continue
             try:
+                reason = (
+                    str(row[COL_REASON]).strip()
+                    if row[COL_REASON] is not None else None
+                )
                 await repo.apply_feedback(
-                    opportunity_id=int(row[COL_ID]),
+                    opportunity_id=opp_id,
                     decision=decision,
-                    reason=str(row[COL_REASON]) if row[COL_REASON] else None,
+                    reason=reason,
                     submitted_by=submitted_by,
                 )
                 n_processed += 1
+                title_preview = (str(row[COL_TITLE]) if row[COL_TITLE] else "?")[:50]
+                logger.debug(
+                    "feedback_applied",
+                    id=opp_id, decision=decision, title=title_preview,
+                )
             except Exception as e:
-                errors.append(f"Ligne {i}: {e}")
+                errors.append(f"Ligne {i} (ID={opp_id}): {e}")
 
     logger.info("ingested", processed=n_processed, skipped=n_skipped, errors=len(errors))
     return {"processed": n_processed, "skipped": n_skipped, "errors": errors}

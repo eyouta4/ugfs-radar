@@ -42,7 +42,16 @@ def _build_html_body(
     high = sum(1 for o in opportunities if (o.score or 0) >= 70)
     urgent = sum(1 for o in opportunities if o.is_urgent)
 
-    top3 = sorted(opportunities, key=lambda o: o.score or 0, reverse=True)[:3]
+    # Split nouvelles (jamais envoyées) vs récurrentes (rappel urgent)
+    n_new = sum(1 for o in opportunities if getattr(o, "last_emailed_at", None) is None)
+    n_recur = total - n_new
+
+    # Top 3 dans les NOUVELLES (priorité absolue pour le résumé email)
+    new_opps = [o for o in opportunities if getattr(o, "last_emailed_at", None) is None]
+    top3 = sorted(new_opps, key=lambda o: o.score or 0, reverse=True)[:3]
+    if len(top3) < 3:  # compléter avec les récurrentes urgentes
+        recur = [o for o in opportunities if o not in top3]
+        top3 += sorted(recur, key=lambda o: o.score or 0, reverse=True)[:3 - len(top3)]
 
     top3_html = ""
     for i, opp in enumerate(top3, start=1):
@@ -117,9 +126,14 @@ def _build_html_body(
           </p>
           <p style="margin:0 0 18px 0;color:#1f2937;font-size:15px;line-height:1.55;">
             Voici la synthèse hebdomadaire de la veille automatisée UGFS-Radar.
-            <strong>{total}</strong> opportunités ont été détectées cette semaine :
+            <strong style="color:#0f2a4a;">{n_new} NOUVELLES opportunités</strong>
+            cette semaine{(" + " + str(n_recur) + " rappels urgents") if n_recur else ""} :
             <strong style="color:#16a34a;">{go_count} GO prioritaires</strong> (score ≥ 80)
             et <strong style="color:#ca8a04;">{study_count} à étudier</strong> (score 60–79).
+          </p>
+          <p style="margin:0 0 18px 0;color:#6b7280;font-size:13px;line-height:1.5;font-style:italic;">
+            ℹ️ Anti-redondance activée : les opportunités déjà envoyées les semaines
+            précédentes ne sont plus listées (sauf rappels urgents pour deadlines ≤ 14j).
           </p>
 
           {urgent_banner}

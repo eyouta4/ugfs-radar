@@ -113,17 +113,30 @@ async def main() -> dict:
     # Reset le cache de providers LLM désactivés (au cas où on retry après échec)
     reset_provider_cache()
 
-    # Init DB (s'assurer pgvector + tables présentes)
+    # Init DB (s'assurer pgvector + tables présentes + migrations légères)
     await init_db()
 
-    # 0. Reset : supprimer les AOs non-HISTORICAL de plus de 8 jours
-    cutoff_dt = datetime.utcnow() - timedelta(days=8)
+    # 0a. Re-appliquer le pre_filter aux AOs récentes (corrige les faux positifs
+    # générés AVANT les dernières règles de filtrage). Idempotent.
+    async with session_scope() as session:
+        opp_repo = OpportunityRepo(session)
+        n_demoted = await opp_repo.reapply_filters_to_recent(
+            pre_filter_fn=pre_filter, cutoff_days=60,
+        )
+        await session.commit()
+        if n_demoted:
+            logger.info("filters_reapplied", demoted_to_no_go=n_demoted)
+
+    # 0b. Reset : supprimer les AOs non-HISTORICAL et non-décidées de plus de 21 jours
+    # (on garde plus longtemps maintenant pour gérer la dédup inter-semaines)
+    cutoff_dt = datetime.utcnow() - timedelta(days=21)
     async with session_scope() as session:
         from sqlalchemy import delete as sa_delete
         from src.storage.models import Opportunity as OppModel
         stmt_del = (
             sa_delete(OppModel)
             .where(OppModel.status != "HISTORICAL")
+            .where(OppModel.client_decision.is_(None))
             .where(OppModel.discovered_at < cutoff_dt)
         )
         result_del = await session.execute(stmt_del)
@@ -262,10 +275,23 @@ async def main() -> dict:
 
     logger.info("scoring_done", new=n_new, updated=n_updated)
 
-    # 7. Récupération pour delivery
+    # 7. Récupération pour delivery — AVEC DÉDUP INTER-SEMAINES
+    # On récupère uniquement les AOs nouvelles ou ré-émergées depuis le dernier email,
+    # plus celles déjà envoyées MAIS urgentes (deadline ≤ 14j) à rappeler.
+    run_start_dt = datetime.utcnow()
     async with session_scope() as session:
         opp_repo = OpportunityRepo(session)
-        recent = await opp_repo.list_recent(days=7, only_open=True, min_score=0)
+        new_opps, still_relevant = await opp_repo.list_for_weekly_email(
+            run_started_at=run_start_dt,
+            min_score=35,
+        )
+        recent = list(new_opps) + list(still_relevant)
+        logger.info(
+            "weekly_selection",
+            new=len(new_opps),
+            still_relevant=len(still_relevant),
+            total=len(recent),
+        )
         urgent = await opp_repo.list_urgent_unprocessed()
         # Historique : les opportunités avec décision client (= corpus calibration)
         from sqlalchemy import select
@@ -297,6 +323,13 @@ async def main() -> dict:
         email_result = await send_weekly_email(
             list(recent), excel_bytes, run_date=today, zip_bytes=zip_bytes
         )
+
+        # 9b. Marquer les AOs envoyées comme "déjà emailées" pour la dédup inter-semaines
+        email_ok_for_mark = bool(email_result and not email_result.get("skipped"))
+        if email_ok_for_mark and recent:
+            opp_ids = [o.id for o in recent if hasattr(o, "id")]
+            await opp_repo.mark_emailed(opp_ids)
+            logger.info("opps_marked_emailed", n=len(opp_ids))
 
         # 10. Teams alerts
         teams_results = await send_urgent_alerts(list(urgent))

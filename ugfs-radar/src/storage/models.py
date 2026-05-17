@@ -75,6 +75,10 @@ class Opportunity(Base):
     discovered_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
+    # Dernière fois envoyée dans l'email hebdo (anti-redondance inter-semaines).
+    # NULL = jamais envoyée → à inclure dans le prochain email.
+    last_emailed_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
     # Décision client (renseignée via feedback)
     client_decision: Mapped[str | None] = mapped_column(String(20))     # GO / NO_GO / BORDERLINE
     client_reason: Mapped[str | None] = mapped_column(Text)
