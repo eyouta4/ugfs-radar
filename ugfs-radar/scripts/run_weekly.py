@@ -27,7 +27,9 @@ import asyncio
 import time
 from datetime import date, datetime, timedelta
 
-from src.analyzer.llm_analyzer import analyze_opportunity, pre_filter, keyword_prescore
+from src.analyzer.llm_analyzer import (
+    analyze_opportunity, pre_filter, keyword_prescore, reset_provider_cache,
+)
 from src.analyzer import (
     VoyageEmbedder,
     compute_score,
@@ -107,6 +109,9 @@ async def main() -> dict:
     today = date.today()
 
     logger.info("weekly_run_started", date=today.isoformat(), env=settings.environment)
+
+    # Reset le cache de providers LLM désactivés (au cas où on retry après échec)
+    reset_provider_cache()
 
     # Init DB (s'assurer pgvector + tables présentes)
     await init_db()
@@ -190,31 +195,51 @@ async def main() -> dict:
     embedder = VoyageEmbedder()
     settings_llm = get_settings()
 
-    # Groq free tier : ~30 RPM → traitement séquentiel avec délai pour éviter les 429.
-    # Anthropic : parallélisme normal (semaphore à 4).
-    groq_only = not settings_llm.anthropic_api_key and bool(settings_llm.groq_api_key)
+    # Stratégie : si Anthropic configuré ET dispose de crédit → parallèle (4 concurrent)
+    # Sinon (Groq/Cerebras/Gemini fallback) → séquentiel pour respecter les TPM limits.
+    # La détection "Anthropic vraiment dispo" se fait dynamiquement : on test 1 AO
+    # d'abord, et si Anthropic répond OK → mode parallèle, sinon → séquentiel.
+    has_anthropic = bool(settings_llm.anthropic_api_key)
 
-    if groq_only:
-        logger.info(
-            "llm_mode_groq_sequential",
-            n=len(deduped),
-            delay_s=GROQ_RPM_DELAY,
-        )
-        results = []
-        sem1 = asyncio.Semaphore(1)
-        for i, raw in enumerate(deduped):
-            if i > 0:
-                await asyncio.sleep(GROQ_RPM_DELAY)   # ≤ 24 RPM → sous la limite
-            result = await _process_one(raw, embedder, weights, sem1)
-            results.append(result)
-            logger.debug("groq_progress", done=i + 1, total=len(deduped))
+    # Probe : 1 AO en preview pour détecter si Anthropic répond (et donc skip après si crédit=0)
+    use_parallel = False
+    if has_anthropic and deduped:
+        from src.analyzer.llm_analyzer import _DISABLED_PROVIDERS, _is_provider_disabled
+        # On lance d'abord 1 AO pour voir si Anthropic répond. Si oui → parallèle.
+        # Si Anthropic échoue avec crédit=0, il sera désactivé dans le cache.
+        logger.info("llm_probe_anthropic", title=deduped[0].title[:60])
+        probe_sem = asyncio.Semaphore(1)
+        probe_result = await _process_one(deduped[0], embedder, weights, probe_sem)
+        results = [probe_result]
+        deduped_remaining = deduped[1:]
+        # Si Anthropic n'est pas désactivé après ce 1er appel → on peut paralléliser
+        use_parallel = not _is_provider_disabled("anthropic")
     else:
+        results = []
+        deduped_remaining = deduped
+
+    if use_parallel and deduped_remaining:
+        logger.info("llm_mode_parallel_anthropic", n=len(deduped_remaining))
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM)
         tasks = [
             _process_one(raw, embedder, weights, semaphore)
-            for raw in deduped
+            for raw in deduped_remaining
         ]
-        results = await asyncio.gather(*tasks, return_exceptions=False)
+        more = await asyncio.gather(*tasks, return_exceptions=False)
+        results.extend(more)
+    elif deduped_remaining:
+        logger.info(
+            "llm_mode_sequential_fallback",
+            n=len(deduped_remaining),
+            delay_s=GROQ_RPM_DELAY,
+        )
+        sem1 = asyncio.Semaphore(1)
+        for i, raw in enumerate(deduped_remaining):
+            await asyncio.sleep(GROQ_RPM_DELAY)
+            result = await _process_one(raw, embedder, weights, sem1)
+            results.append(result)
+            if (i + 1) % 5 == 0:
+                logger.info("sequential_progress", done=i + 1, total=len(deduped_remaining))
 
     # 6. Persistence
     n_new = 0

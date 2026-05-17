@@ -33,11 +33,33 @@ class Settings(BaseSettings):
     database_url_sync: str = Field(default="postgresql+psycopg2://ugfs:ugfs@localhost:5432/ugfs_radar")
 
     # === LLM ===
-    groq_api_key: str = Field(default="")
-    groq_model: str = Field(default="llama-3.3-70b-versatile")
-    openai_api_key: str | None = None
+    # Anthropic (Claude) — utilisé en priorité si crédit disponible
     anthropic_api_key: str | None = None
     anthropic_model: str = Field(default="claude-3-5-haiku-20241022")
+
+    # Groq (Llama) — fallback gratuit principal
+    # llama-3.1-8b-instant : 30 RPM, 14400 RPD, 30000 TPM (largement suffisant)
+    # llama-3.3-70b-versatile : 30 RPM, 1000 RPD, 6000 TPM (TROP RESTRICTIF — ne pas utiliser par défaut)
+    groq_api_key: str = Field(default="")
+    groq_model: str = Field(default="llama-3.1-8b-instant")
+
+    # Cerebras (Llama 3.3 70B gratuit, plus généreux que Groq) — 2e fallback
+    # https://cerebras.ai — ~60 RPM free tier sur llama3.3-70b
+    cerebras_api_key: str = Field(default="")
+    cerebras_model: str = Field(default="llama-3.3-70b")
+
+    # Google Gemini (gratuit) — 3e fallback
+    # gemini-2.0-flash : 15 RPM, 1500 RPD, 1M TPM (modèle actuel)
+    gemini_api_key: str = Field(default="")
+    gemini_model: str = Field(default="gemini-2.0-flash")
+
+    openai_api_key: str | None = None
+
+    # === Rate limiting LLM ===
+    # Cap maximum d'attente sur 429 : si l'API dit "wait 81 min" on saute l'AO
+    llm_max_retry_after_s: int = Field(default=90)
+    # Timeout global par AO (toutes tentatives confondues)
+    llm_per_op_timeout_s: int = Field(default=180)
 
     # === Embeddings ===
     voyage_api_key: str = Field(default="")

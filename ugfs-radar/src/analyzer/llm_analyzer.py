@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import date
+from typing import Any
 
 from anthropic import AsyncAnthropic, APIStatusError
 from pydantic import ValidationError
@@ -217,107 +218,72 @@ def keyword_prescore(raw: RawOpportunity) -> int:
 # ============================================================
 
 def _build_system_prompt() -> str:
-    """Prompt système CoT : l'analyste UGFS raisonne avant de structurer."""
+    """Prompt système CoT compact (~800 tokens) — économise TPM sur Groq/Cerebras."""
     profile = get_ugfs_profile()
 
-    vehicles = profile["vehicles"]
+    # Véhicules : juste nom + code + 3 mots-clés (vs 5)
     vehicle_lines = "\n".join(
-        f'  - {v["name"]} (code: {v["code"]}) — focus: {v["focus"]}'
-        f' — mots-clés: {", ".join(v["keywords"][:5])}'
-        for v in vehicles
+        f"  - {v['name']} (code={v['code']}): {v['focus'][:80]}"
+        for v in profile["vehicles"]
     )
 
-    partners = profile["priority_partners"]
-    partners_flat = ", ".join(
-        partners["development_finance"][:15] + partners["partners_seen_in_history"][:10]
-    )
+    # Partenaires : top 12 seulement (vs 25)
+    dev_fin = profile["priority_partners"]["development_finance"][:12]
+    partners_flat = ", ".join(dev_fin)
 
-    dq_rules = "\n".join(f'  • {r["rule"]}' for r in profile["disqualification_rules"])
+    return f"""Tu es analyste senior chez **UGFS North Africa**, fund manager d'impact à Tunis.
+UGFS répond aux AOs comme GESTIONNAIRE DE FONDS (pas ONG/startup) — lève et déploie du capital privé.
 
-    geo_primary = ", ".join(profile["geographies"].get("primary", []))
-    geo_secondary = ", ".join(profile["geographies"].get("secondary", [])[:6])
-    geo_europe = ", ".join(profile["geographies"].get("europe", [])[:5])
-
-    # GO patterns from real UGFS history
-    go_patterns = profile.get("go_patterns", [])
-    go_patterns_text = "\n".join(f"  • {p}" for p in go_patterns[:8]) if go_patterns else ""
-
-    return f"""Tu es un analyste senior chez **UGFS North Africa**, gestionnaire de fonds d'impact basé à Tunis, spécialisé en finance climatique et blended finance.
-
-IMPORTANT : UGFS répond aux appels d'offres en tant que **gestionnaire de fonds (fund manager)**, pas comme ONG ou startup.
-Son rôle : lever et déployer des capitaux privés via ses véhicules d'investissement thématiques.
-
-═══════════════════════════════════════════════════════
-PROFIL UGFS
-═══════════════════════════════════════════════════════
-**Types acceptés :** asset management, grants pour développement de fonds, advisory, mandats de gestion
-**Thématiques :** green (50% priorité), blue (30%), généraliste (20%)
-
+**Types acceptés :** asset_management, grant (pour développer un fonds), advisory, mandate
+**Thématiques :** green (50%) / blue (30%) / generaliste (20%)
 **Géographies :**
-  → Primaires (fort intérêt) : {geo_primary}
-  → Secondaires (intérêt) : {geo_secondary}
-  → Europe (synergie co-investissement) : {geo_europe}
-  → HORS SCOPE : North America, Latin America, East Asia/Pacific (sauf si éligibilité Afrique explicite)
+  - Primaires : Tunisia, Maghreb, MENA, Afrique, Sénégal, Tanzanie
+  - Secondaires : Afrique SSA (Kenya, Morocco, Egypt, Sierra Leone, Nigeria, Ghana...)
+  - Europe : EU, France, Germany, Netherlands... (synergie co-investissement)
+  - HORS SCOPE strict : North America only, Latin America only, East Asia only
 
-**Véhicules actifs UGFS :**
+**Véhicules UGFS actifs :**
 {vehicle_lines}
 
-**Partenaires prioritaires :** {partners_flat}
-
-**Critères de DISQUALIFICATION immédiate :**
-{dq_rules}
-
-**Patterns d'opportunités GO identifiés dans l'historique réel UGFS :**
-{go_patterns_text}
+**Partenaires prioritaires (signal fort) :** {partners_flat}
 
 ═══════════════════════════════════════════════════════
-MÉTHODE D'ANALYSE OBLIGATOIRE — CHAIN OF THOUGHT
+MÉTHODE OBLIGATOIRE — Chain of Thought en 4 étapes
 ═══════════════════════════════════════════════════════
 
-Tu DOIS raisonner en 3 étapes avant de produire le JSON :
+**ÉTAPE 0 — TYPE DE CONTENU (critique)** Identifie d'abord :
+  ✅ APPEL OUVERT (Call for Proposals / EoI / RFP / Appel à Projets / Apply now) → opportunity_type=grant/asset_management/advisory/mandate
+  ❌ ARTICLE DE PRESSE / annonce d'une décision ("EU announces", "GCF welcomes", "designated as") → type=unknown, decision=NO_GO
+  ❌ ÉVÉNEMENT / WEBINAIRE / CONFERENCE / DIALOGUE → type=unknown, decision=NO_GO
+  ❌ PAGE GÉNÉRIQUE (homepage, page pays, annuaire) → type=unknown, decision=NO_GO
+  ❌ RÉSULTATS d'un appel passé ("Semi-finalists announced", "Winners") → type=unknown, decision=NO_GO
+  ⚠️ Un article parlant d'une opportunité n'est PAS l'opportunité.
 
-**ÉTAPE 0 — TYPE DE CONTENU (obligatoire, 1-2 phrases)**
-  AVANT TOUT, identifie le type de contenu de la page :
-  • Est-ce un APPEL OUVERT (Call for Proposals / EoI / RFP / Appel à Projets) ? → opportunity_type = grant/asset_management/advisory/mandate
-  • Est-ce un ARTICLE DE PRESSE ou ANNONCE d'une décision (ex: "EU boosts...", "AfDB announces...", "GCF welcomes...") ? → opportunity_type = "unknown", preliminary_decision = NO_GO
-  • Est-ce un ÉVÉNEMENT ou WEBINAIRE (dialogue, conference, webinar) ? → opportunity_type = "unknown", preliminary_decision = NO_GO
-  • Est-ce une PAGE GÉNÉRIQUE (homepage, page pays, annuaire) ? → opportunity_type = "unknown", preliminary_decision = NO_GO
-  ⚠️ RÈGLE CRITIQUE : Un article parlant d'une opportunité n'est PAS une opportunité actionnable.
-  Seul un appel OUVERT avec possibilité de soumettre une candidature peut être GO.
+**ÉTAPE 1 — ADMISSIBILITÉ**
+  • Deadline passée ? Géo 100% hors scope ? Réservé ONG/jeunes/individus/startups ?
+  → "Admissible" ou "DISQUALIFIÉ : [raison]"
 
-**ÉTAPE 1 — ADMISSIBILITÉ (2-4 phrases)**
-  • La deadline est-elle déjà passée (vs aujourd'hui) ?
-  • La géographie est-elle 100% hors scope UGFS ?
-  • L'éligibilité exclut-elle explicitement les gestionnaires de fonds / asset managers ?
-  • Est-ce un RFP pour cabinet de conseil individuel ou programme pour startups/ONG uniquement ?
-  → Conclure : "Admissible" ou "DISQUALIFIÉ : [raison précise]"
+**ÉTAPE 2 — ALIGNEMENT UGFS**
+  • Thème ? Véhicule UGFS approprié (TGF/BLUE_BOND/SEED_OF_CHANGE/NEW_ERA/MUSANADA) ?
+  • Géographie (primaire/secondaire/europe) ? Partenaires connus mentionnés ?
+  • Ressemble aux soumissions UGFS historiques (APIA, Climate KIC, A4FM, SOGREA, PREO) ?
 
-**ÉTAPE 2 — ALIGNEMENT UGFS (4-6 phrases)**
-  • Thème : green (énergie, climat, CO2, renouvelable), blue (eau, océan, marine), généraliste ?
-  • Véhicule UGFS le plus adapté : TGF / Blue Bond / Seed of Change / NEW ERA / Musanada ?
-  • Géographie : primaire (Tunisie/Maghreb/MENA), secondaire (Afrique SSA), Europe, ou hors scope ?
-  • Partenaires mentionnés parmi nos prioritaires (GCF, AFD, GIZ, AfDB, IFC, Mitigation AF, Climate KIC...) ?
-  • Ticket size si précisé — sweet spot UGFS 500K-50M USD ?
-  • Est-ce que l'AO ressemble aux types d'opportunités soumises historiquement par UGFS ?
+**ÉTAPE 3 — RECOMMANDATION**
+  → GO : véhicule clair + géo OK + deadline réaliste + fund manager éligible + APPEL OUVERT
+  → BORDERLINE : alignement partiel, mérite investigation
+  → NO_GO : DQ ou type incompatible
 
-**ÉTAPE 3 — RECOMMANDATION (1-3 phrases)**
-  → GO si : véhicule UGFS clair ET (géographie primaire OU secondaire OU Europe) ET deadline réaliste ET asset manager éligible
-  → BORDERLINE si : alignement partiel, partenaire connu, géographie étendue mais pas disqualifiante, mérite investigation
-  → NO_GO si : disqualifié OU type incompatible (startup, ONG uniquement) OU géographie strictement hors scope
-  → Justifier avec 1-2 raisons concrètes
+Output : JSON strict (pas de markdown), commencer par `analyst_reasoning` (étapes 0→3, min 80 mots).
 
-Ce raisonnement va dans le champ `analyst_reasoning` du JSON.
-Après ce raisonnement, produis le JSON STRICT. Réponds UNIQUEMENT avec le JSON, sans markdown.
-
-⚠️ RAPPEL FINAL ANTI-FAUX-POSITIFS :
-  - "EU announces €35M grant for Tunisia" → TYPE=unknown, NO_GO (article, pas un appel)
-  - "GCF welcomes new entities" → TYPE=unknown, NO_GO (annonce, pas un appel ouvert)
-  - "Ivory Coast designated as GCF hub" → TYPE=unknown, NO_GO (news)
-  - "GCF Regional Dialogue" → TYPE=unknown, NO_GO (événement, pas un appel)
-  - "Semi-Finalists Announced" → TYPE=unknown, NO_GO (résultats, appel fermé)
-  - "Appel à Projets APIA 2026 : Transformation des Margines" → TYPE=grant, peut être GO
-  - "Convergence Blended Finance Accelerator for Fund Managers, Call opens May 19" → TYPE=grant, GO
-  - "Call for proposals | ACCF Portal" → TYPE=grant, GO
+⚠️ EXEMPLES ANTI-FAUX-POSITIFS (à mémoriser) :
+  - "EU boosts clean energy with €35M grant" → unknown, NO_GO (article)
+  - "GCF welcomes new Accredited Entities" → unknown, NO_GO (annonce)
+  - "GCF Regional Dialogue MENA" → unknown, NO_GO (événement)
+  - "Semi-Finalists Announced: A4FM" → unknown, NO_GO (appel fermé)
+  - "Country – Adaptation Fund /country/RG/" → unknown, NO_GO (page pays)
+  - "Appel à Projets APIA Margines 2026" → grant, peut être GO
+  - "Call for proposals | ACCF Portal" → grant, GO
+  - "Blended Finance Accelerator for Fund Managers — Apply" → grant, GO
 """
 
 
@@ -359,7 +325,7 @@ Commence par ton raisonnement en 3 étapes, puis retourne le JSON conforme au sc
 
 **Texte récupéré :**
 \"\"\"
-{raw.raw_text[:4000]}
+{raw.raw_text[:1800]}
 \"\"\"
 
 ━━━ FORMAT DE SORTIE JSON STRICT ━━━
@@ -372,11 +338,32 @@ Réponds uniquement avec le JSON valide, sans aucun texte avant ou après.
 
 
 # ============================================================
-# Clients LLM — Anthropic (principal) + Groq (fallback gratuit)
+# Clients LLM — chaîne de fallback :
+#   Anthropic (Claude)  →  Groq (Llama 8B fast)  →  Cerebras (Llama 70B)  →  Gemini Flash
 # ============================================================
 
 _anthropic_client: AsyncAnthropic | None = None
 _groq_client = None   # httpx async, pas de SDK
+
+# Cache de session : si une API échoue avec une erreur durable (crédit épuisé,
+# quota journalier), on ne la rappelle pas pour tout le run.
+_DISABLED_PROVIDERS: set[str] = set()
+
+
+def _disable_provider(name: str, reason: str) -> None:
+    """Marque un provider comme désactivé pour le reste du run."""
+    if name not in _DISABLED_PROVIDERS:
+        _DISABLED_PROVIDERS.add(name)
+        logger.warning("llm_provider_disabled", provider=name, reason=reason[:200])
+
+
+def _is_provider_disabled(name: str) -> bool:
+    return name in _DISABLED_PROVIDERS
+
+
+def reset_provider_cache() -> None:
+    """Reset le cache de providers désactivés (utile entre runs)."""
+    _DISABLED_PROVIDERS.clear()
 
 
 def _get_anthropic_client() -> AsyncAnthropic:
@@ -401,7 +388,7 @@ async def _call_anthropic(system: str, user: str, temperature: float = 0.15) -> 
         with attempt:
             response = await _get_anthropic_client().messages.create(
                 model=settings.anthropic_model,
-                max_tokens=2500,
+                max_tokens=2000,
                 system=[{"type": "text", "text": system,
                           "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user}],
@@ -411,47 +398,66 @@ async def _call_anthropic(system: str, user: str, temperature: float = 0.15) -> 
     return "{}"
 
 
-async def _call_groq(system: str, user: str, temperature: float = 0.15) -> str:
+async def _call_openai_compatible(
+    api_name: str,
+    base_url: str,
+    api_key: str,
+    model: str,
+    system: str,
+    user: str,
+    temperature: float = 0.15,
+    support_json_mode: bool = True,
+) -> str:
     """
-    Fallback Groq (Llama 3.3 70B) — API OpenAI-compatible, gratuit.
-    https://console.groq.com — 14 400 req/jour, ~30 RPM tier gratuit.
-
-    Retry automatique sur 429 (rate limit) : attend le header retry-after
-    ou 65s par défaut, jusqu'à 3 tentatives.
+    Appel d'un endpoint OpenAI-compatible (Groq, Cerebras, etc.).
+    Gère 429 avec retry exponentiel + cap sur retry_after (configurable).
+    Si 429 persistant ou retry_after > cap → désactive le provider pour le run.
     """
     import httpx
     settings = get_settings()
-    groq_key = settings.groq_api_key
-    if not groq_key:
-        raise RuntimeError("GROQ_API_KEY non configurée")
 
-    payload = {
-        "model": settings.groq_model,   # "llama-3.3-70b-versatile"
+    payload: dict[str, Any] = {
+        "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
         "temperature": temperature,
-        "max_tokens": 2500,
-        "response_format": {"type": "json_object"},  # force JSON
+        "max_tokens": 2000,
     }
-    max_attempts = 4
+    if support_json_mode:
+        payload["response_format"] = {"type": "json_object"}
+
+    max_attempts = 3
+    cap = settings.llm_max_retry_after_s   # ex: 90s
+
     for attempt in range(1, max_attempts + 1):
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             r = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
+                base_url,
                 headers={
-                    "Authorization": f"Bearer {groq_key}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
             )
+
         if r.status_code == 429:
-            # Respecter le header retry-after si présent, sinon attendre 65s
-            retry_after = int(r.headers.get("retry-after", 65))
-            retry_after = max(retry_after, 5)   # toujours ≥ 5s
+            retry_after = int(r.headers.get("retry-after", 30))
+            # Si l'API demande un délai > cap, c'est un quota journalier
+            # → désactiver le provider pour le run au lieu d'attendre des heures
+            if retry_after > cap:
+                _disable_provider(
+                    api_name,
+                    f"quota dépassé (retry_after={retry_after}s > cap {cap}s)",
+                )
+                raise RuntimeError(
+                    f"{api_name}: quota journalier épuisé "
+                    f"(retry_after={retry_after}s)"
+                )
+            retry_after = max(retry_after, 5)
             logger.warning(
-                "groq_rate_limited",
+                f"{api_name}_rate_limited",
                 attempt=attempt,
                 retry_after_s=retry_after,
                 max_attempts=max_attempts,
@@ -459,45 +465,153 @@ async def _call_groq(system: str, user: str, temperature: float = 0.15) -> str:
             if attempt < max_attempts:
                 await asyncio.sleep(retry_after)
                 continue
-            # Dernière tentative échouée
             r.raise_for_status()
+
+        # Détection erreur "quota épuisé" via le body (variable selon provider)
+        if r.status_code in (401, 402, 403):
+            err_body = r.text[:300]
+            if any(k in err_body.lower() for k in (
+                "quota", "credit", "insufficient", "exceeded", "limit"
+            )):
+                _disable_provider(api_name, err_body)
+                raise RuntimeError(f"{api_name}: quota/crédit épuisé — {err_body}")
+
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"] or "{}"
-    raise RuntimeError("Groq: nombre maximum de tentatives dépassé (429 persistant)")
+
+    raise RuntimeError(f"{api_name}: rate-limit persistant après {max_attempts} tentatives")
+
+
+async def _call_groq(system: str, user: str, temperature: float = 0.15) -> str:
+    """Fallback Groq — Llama 3.1 8B Instant par défaut (30 RPM, 30K TPM)."""
+    settings = get_settings()
+    if not settings.groq_api_key:
+        raise RuntimeError("GROQ_API_KEY non configurée")
+    return await _call_openai_compatible(
+        api_name="groq",
+        base_url="https://api.groq.com/openai/v1/chat/completions",
+        api_key=settings.groq_api_key,
+        model=settings.groq_model,
+        system=system, user=user, temperature=temperature,
+    )
+
+
+async def _call_cerebras(system: str, user: str, temperature: float = 0.15) -> str:
+    """Fallback Cerebras — Llama 3.3 70B (60 RPM gratuit)."""
+    settings = get_settings()
+    if not settings.cerebras_api_key:
+        raise RuntimeError("CEREBRAS_API_KEY non configurée")
+    return await _call_openai_compatible(
+        api_name="cerebras",
+        base_url="https://api.cerebras.ai/v1/chat/completions",
+        api_key=settings.cerebras_api_key,
+        model=settings.cerebras_model,
+        system=system, user=user, temperature=temperature,
+        support_json_mode=False,   # Cerebras ne supporte pas tous les modèles JSON mode
+    )
+
+
+async def _call_gemini(system: str, user: str, temperature: float = 0.15) -> str:
+    """Fallback Google Gemini — gemini-1.5-flash (15 RPM, 1500 RPD, 1M TPM)."""
+    import httpx
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY non configurée")
+
+    # Gemini API native (non OpenAI-compatible)
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
+    )
+    payload = {
+        "contents": [
+            {"role": "user", "parts": [{"text": f"{system}\n\n---\n\n{user}"}]}
+        ],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": 2000,
+            "responseMimeType": "application/json",
+        },
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(url, json=payload)
+    if r.status_code == 429:
+        _disable_provider("gemini", "rate limit Gemini")
+        raise RuntimeError("Gemini: rate limit atteint")
+    r.raise_for_status()
+    data = r.json()
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"] or "{}"
+    except (KeyError, IndexError):
+        raise RuntimeError(f"Gemini: réponse invalide {str(data)[:200]}")
 
 
 async def _call_llm(system: str, user: str, temperature: float = 0.15) -> str:
     """
-    Stratégie : Anthropic (Claude) en priorité, Groq (Llama) en fallback.
+    Stratégie multi-fallback avec circuit breaker (cache de session) :
 
-    Si Anthropic échoue (crédit épuisé, quota, erreur réseau) → bascule sur Groq.
-    Si Groq configuré mais Anthropic absent → Groq directement.
+        1. Anthropic Claude     (premium, si crédit)
+        2. Groq Llama 3.1 8B    (gratuit, 30K TPM — défaut rapide)
+        3. Cerebras Llama 3.3   (gratuit, 60 RPM — backup haute qualité)
+        4. Google Gemini Flash  (gratuit, 15 RPM 1.5K RPD)
+
+    Une fois qu'un provider échoue avec une erreur DURABLE (crédit épuisé,
+    quota journalier), il est désactivé pour tout le run via _DISABLED_PROVIDERS.
+    → évite de retenter Anthropic 50 fois quand on sait que le crédit = 0.
+
+    Wrapped dans asyncio.wait_for() pour timeout global par AO.
     """
     settings = get_settings()
-    has_anthropic = bool(settings.anthropic_api_key)
-    has_groq = bool(settings.groq_api_key)
 
-    # Priorité 1 : Anthropic Claude
-    if has_anthropic:
+    providers: list[tuple[str, bool, "callable"]] = [
+        ("anthropic", bool(settings.anthropic_api_key),  _call_anthropic),
+        ("groq",      bool(settings.groq_api_key),       _call_groq),
+        ("cerebras",  bool(settings.cerebras_api_key),   _call_cerebras),
+        ("gemini",    bool(settings.gemini_api_key),     _call_gemini),
+    ]
+
+    last_error: Exception | None = None
+
+    for name, configured, fn in providers:
+        if not configured:
+            continue
+        if _is_provider_disabled(name):
+            continue   # circuit breaker activé pour ce provider
         try:
-            result = await _call_anthropic(system, user, temperature)
-            logger.debug("llm_provider_used", provider="anthropic")
+            result = await asyncio.wait_for(
+                fn(system, user, temperature),
+                timeout=settings.llm_per_op_timeout_s,
+            )
+            logger.info("llm_provider_used", provider=name)
             return result
+        except asyncio.TimeoutError as exc:
+            logger.warning("llm_timeout", provider=name,
+                           timeout_s=settings.llm_per_op_timeout_s)
+            last_error = exc
+            continue
         except Exception as exc:
             err_str = str(exc)
-            # Crédit épuisé ou quota → basculer sur Groq sans retry
-            if "credit balance" in err_str or "rate_limit" in err_str or "529" in err_str:
-                logger.warning("anthropic_fallback_to_groq", reason=err_str[:120])
-            else:
-                raise  # Erreur inattendue → propager
+            # Erreurs durables → désactiver le provider pour le run
+            durable_signals = (
+                "credit balance", "credit_balance",
+                "insufficient", "quota", "exceeded",
+                "billing", "unauthorized",
+            )
+            if any(s in err_str.lower() for s in durable_signals):
+                _disable_provider(name, err_str)
+            logger.warning(
+                f"{name}_call_failed",
+                reason=err_str[:200],
+                next_provider="auto",
+            )
+            last_error = exc
+            continue
 
-    # Priorité 2 : Groq Llama (fallback gratuit)
-    if has_groq:
-        result = await _call_groq(system, user, temperature)
-        logger.info("llm_provider_used", provider="groq_fallback")
-        return result
-
-    raise RuntimeError("Aucun LLM disponible — configure ANTHROPIC_API_KEY ou GROQ_API_KEY")
+    # Aucun provider n'a fonctionné
+    raise RuntimeError(
+        "Tous les providers LLM ont échoué ou sont désactivés. "
+        f"Dernière erreur : {str(last_error)[:200]}"
+    )
 
 
 # ============================================================
@@ -532,10 +646,13 @@ async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None
         logger.warning("llm_call_failed", title=raw.title[:60], error=str(exc))
         return None
 
-    try:
-        data = json.loads(raw_json)
-    except json.JSONDecodeError as exc:
-        logger.warning("llm_json_invalid", title=raw.title[:60], error=str(exc), raw=raw_json[:300])
+    data = _extract_json(raw_json)
+    if data is None:
+        logger.warning(
+            "llm_json_invalid",
+            title=raw.title[:60],
+            raw=(raw_json or "")[:300],
+        )
         return None
 
     reasoning = data.get("analyst_reasoning", "")
@@ -551,6 +668,51 @@ async def analyze_opportunity(raw: RawOpportunity) -> AnalyzedOpportunity | None
         return None
 
     return analyzed
+
+
+def _extract_json(text: str) -> dict | None:
+    """
+    Extrait un JSON depuis la sortie LLM, robuste aux variations :
+      - JSON brut
+      - JSON enveloppé dans ```json ... ```
+      - JSON précédé/suivi de texte explicatif
+    Retourne dict ou None si vraiment rien d'extractible.
+    """
+    import re
+    if not text:
+        return None
+
+    # Tentative 1 : parse direct
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Tentative 2 : extraire bloc ```json ... ```
+    md_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if md_match:
+        try:
+            return json.loads(md_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Tentative 3 : trouver le premier { ... } équilibré
+    start = text.find("{")
+    if start >= 0:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
+
+    return None
 
 
 def _parse_date_from_text(text: str) -> "date | None":
