@@ -60,18 +60,22 @@ COLS = [
     "UGFS Eligible",          # F  5
     "Appel Ouvert",           # G  6
     "Deadline",               # H  7
-    "Positionnement UGFS",    # I  8
-    "Decision UGFS",          # J  9  ← dropdown
-    "Commentaire interne",    # K  10
+    "Effort estime",          # I  8  ← NEW : ~Xj (low/medium/high)
+    "Win prob.",              # J  9  ← NEW : 0-45%
+    "Positionnement UGFS",    # K 10
+    "Decision UGFS",          # L 11 ← dropdown (déplacé de J → L)
+    "Commentaire interne",    # M 12 ← déplacé de K → M
 ]
 
-# Exporté pour feedback.py
+# Exporté pour feedback.py — indices mis à jour
 COL_ID       = 0
 COL_TITLE    = 1
 COL_SCORE    = 2
 COL_URL      = 3
-COL_DECISION = 9
-COL_REASON   = 10
+COL_EFFORT   = 8
+COL_WINPROB  = 9
+COL_DECISION = 11   # ← shift de 9 → 11
+COL_REASON   = 12   # ← shift de 10 → 12
 
 _SOCIAL = {"instagram.com", "facebook.com", "twitter.com", "tiktok.com", "youtube.com"}
 
@@ -170,6 +174,37 @@ def _cell(ws, row, col, value, bg=BLANC, bold=False, link=False):
     return c
 
 
+def _effort_str(opp) -> str:
+    """Extrait effort_days + win_prob du score_breakdown."""
+    br = getattr(opp, "score_breakdown", {}) or {}
+    days = br.get("effort_days_estimate")
+    if days is None:
+        return "-"
+    days = int(days)
+    if days <= 4:
+        level = "🟢 Faible"
+    elif days <= 10:
+        level = "🟡 Moyen"
+    else:
+        level = "🔴 Élevé"
+    return f"~{days}j\n{level}"
+
+
+def _winprob_str(opp) -> str:
+    br = getattr(opp, "score_breakdown", {}) or {}
+    p = br.get("win_probability_pct")
+    if p is None:
+        return "-"
+    p = int(p)
+    if p >= 25:
+        return f"{p}%\n★★★ Forte"
+    if p >= 15:
+        return f"{p}%\n★★ Modérée"
+    if p >= 8:
+        return f"{p}%\n★ Faible"
+    return f"{p}%\nTrès faible"
+
+
 def _write_opp_row(ws, r, opp):
     bg = _row_bg(opp)
     opp_id = getattr(opp, "id", "") or ""
@@ -188,10 +223,12 @@ def _write_opp_row(ws, r, opp):
     _cell(ws, r, 6,  _elig_str(opp),   bg=bg)
     _cell(ws, r, 7,  _open_str(opp),   bg=bg)
     _cell(ws, r, 8,  _dl_str(opp),     bg=bg)
-    _cell(ws, r, 9,  _position_str(opp), bg=bg)
+    _cell(ws, r, 9,  _effort_str(opp), bg=bg)
+    _cell(ws, r, 10, _winprob_str(opp), bg=bg)
+    _cell(ws, r, 11, _position_str(opp), bg=bg)
     dec = (getattr(opp, "client_decision", "") or "")
-    _cell(ws, r, 10, dec,              bg=bg, bold=bool(dec))
-    _cell(ws, r, 11, (getattr(opp, "client_reason", "") or ""), bg=bg)
+    _cell(ws, r, 12, dec,              bg=bg, bold=bool(dec))
+    _cell(ws, r, 13, (getattr(opp, "client_reason", "") or ""), bg=bg)
 
     text_len = max(
         len(getattr(opp, "eligibility_summary", "") or ""),
@@ -202,7 +239,7 @@ def _write_opp_row(ws, r, opp):
 
 def _add_title_row(ws, run_date, label, color=NAVY):
     ws.row_dimensions[1].height = 8
-    ws.merge_cells("A2:K2")
+    ws.merge_cells("A2:M2")    # ← 13 cols (A→M)
     t = ws["A2"]
     t.value = f"UGFS-RADAR  ·  {label}  ·  Edition du {run_date.strftime('%d/%m/%Y')}"
     t.font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
@@ -214,16 +251,17 @@ def _add_title_row(ws, run_date, label, color=NAVY):
 
 def _add_headers(ws):
     for c, h in enumerate(COLS, 1):
-        bg = BLUE2 if c == 10 else NAVY
+        # Mettre en évidence la colonne Decision UGFS (col L = 12)
+        bg = BLUE2 if c == 12 else NAVY
         _hdr(ws, 4, c, h, bg=bg)
     ws.row_dimensions[4].height = 32
 
 
 def _set_col_widths(ws):
     for col, w in {
-        "A": 6, "B": 38, "C": 9, "D": 50,
-        "E": 20, "F": 22, "G": 14, "H": 14,
-        "I": 36, "J": 18, "K": 28,
+        "A": 6,  "B": 36, "C": 9,  "D": 48,
+        "E": 18, "F": 22, "G": 14, "H": 14,
+        "I": 12, "J": 14, "K": 32, "L": 16, "M": 26,
     }.items():
         ws.column_dimensions[col].width = w
     ws.column_dimensions["A"].hidden = True
@@ -239,18 +277,20 @@ def _add_dropdown_and_filter(ws, start_row, last_row):
         showDropDown=False,
     )
     ws.add_data_validation(dv)
-    dv.add(f"J{start_row}:J{last_row}")
-    ws.auto_filter.ref = f"A4:K{last_row}"
+    # Decision UGFS est maintenant en col L (12e colonne)
+    dv.add(f"L{start_row}:L{last_row}")
+    ws.auto_filter.ref = f"A4:M{last_row}"
     ws.freeze_panes = "B5"
 
 
 def _add_legend(ws, last_row):
     lr = last_row + 2
-    ws.merge_cells(f"A{lr}:K{lr}")
+    ws.merge_cells(f"A{lr}:M{lr}")
     c = ws.cell(lr, 1,
         "LEGENDE : 🟢 GO/Soumis  ·  🟡 Score 60-80 A etudier  ·  🟠 Urgent ≤14j"
-        "  ·  🔴 NO-GO  ·  🔵 Ouvert — "
-        "Remplir colonne J (Decision) + K (Commentaire) et renvoyer a radar-feedback@ugfs-na.com"
+        "  ·  🔴 NO-GO  ·  🔵 Ouvert  ·  Effort : 🟢 Faible / 🟡 Moyen / 🔴 Élevé"
+        "  ·  Win prob basée sur historique UGFS — "
+        "Remplir colonne L (Decision) + M (Commentaire) et renvoyer a radar-feedback@ugfs-na.com"
     )
     c.font = Font(name="Calibri", italic=True, size=9, color="595959")
     c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
@@ -298,7 +338,7 @@ def _build_go_sheet(wb, opportunities, run_date):
         _add_legend(ws, DR + len(go_opps) - 1)
 
     if not go_opps:
-        ws.merge_cells("B5:K5")
+        ws.merge_cells("B5:M5")
         c = ws.cell(5, 2, "Aucun appel d'offres avec score ≥ 80 cette semaine.")
         c.font = Font(name="Calibri", italic=True, size=11, color="595959")
         c.alignment = AC
@@ -330,7 +370,7 @@ def _build_study_sheet(wb, opportunities, run_date):
         _add_legend(ws, DR + len(study_opps) - 1)
 
     if not study_opps:
-        ws.merge_cells("B5:K5")
+        ws.merge_cells("B5:M5")
         c = ws.cell(5, 2, "Aucun appel d'offres entre 60 et 79 cette semaine.")
         c.font = Font(name="Calibri", italic=True, size=11, color="595959")
         c.alignment = AC

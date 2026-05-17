@@ -54,6 +54,97 @@ MAX_OPPS_PER_RUN = 50          # plafond LLM : top 50 pré-scorés par mots-clé
 MAX_CONCURRENT_LLM = 4         # respecte rate limit Claude (4 appels simultanés)
 GROQ_RPM_DELAY = 2.5           # délai entre appels Groq (tier gratuit ≈ 30 RPM → 2s min)
 
+# Domaines officiels (URL plus prioritaire en cas de dédup)
+_OFFICIAL_DOMAINS_PRIORITY = (
+    "apia.com.tn", "afdb.org", "accf.afdb.org", "afd.fr", "convergence.finance",
+    "greenclimate.fund", "adaptation-fund.org", "climate-kic.org", "eit.europa.eu",
+    "ec.europa.eu", "europa.eu", "ted.europa.eu", "ebrd.com", "ecepp.ebrd.com",
+    "ifc.org", "worldbank.org", "undp.org", "kfw.de", "get-invest.eu",
+    "aecfafrica.org", "universalenergyfacility.org", "mitigation-action.org",
+)
+
+
+def _title_signature(title: str) -> set[str]:
+    """Bag-of-words normalisé pour comparaison rapide (sans LLM)."""
+    import re, unicodedata
+    if not title:
+        return set()
+    # Normalise accents et casse
+    nfkd = unicodedata.normalize("NFKD", title)
+    s = "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+    # Garde uniquement mots de 4+ caractères (skip stop-words courts)
+    words = re.findall(r"[a-z0-9]+", s)
+    stop = {"the", "and", "for", "with", "from", "into", "this", "that", "have",
+            "will", "are", "was", "were", "been", "their", "they", "them",
+            "pour", "avec", "dans", "des", "les", "une", "que", "qui", "est",
+            "sur", "par", "aux", "ont", "des", "elle", "ils", "ces", "cette",
+            "fund", "grant", "call", "appel", "project", "programme"}
+    return {w for w in words if len(w) >= 4 and w not in stop}
+
+
+def _semantic_dedup(opps: list) -> list:
+    """
+    Fusionne les AOs avec titres très similaires (Jaccard ≥ 0.5).
+    Garde la version dont l'URL provient de la source la plus officielle.
+    """
+    if len(opps) <= 1:
+        return opps
+
+    # Signatures pré-calculées
+    sigs = [_title_signature(o.title) for o in opps]
+
+    def is_official(url: str) -> int:
+        """Retourne un score 0-100 selon officialité du domaine."""
+        url_lower = (url or "").lower()
+        for i, dom in enumerate(_OFFICIAL_DOMAINS_PRIORITY):
+            if dom in url_lower:
+                return 100 - i   # plus haut = plus prioritaire
+        # PDF officiel toujours mieux qu'un article
+        if url_lower.endswith(".pdf"):
+            return 50
+        return 0
+
+    keep = [True] * len(opps)
+    for i in range(len(opps)):
+        if not keep[i]:
+            continue
+        for j in range(i + 1, len(opps)):
+            if not keep[j]:
+                continue
+            sig_i, sig_j = sigs[i], sigs[j]
+            if not sig_i or not sig_j:
+                continue
+            # Containment-based similarity (plus tolérant que Jaccard) :
+            # un AO est doublon de l'autre si ≥ 60% de ses mots-clés sont
+            # contenus dans l'autre, ET au moins 3 mots-clés communs.
+            inter = len(sig_i & sig_j)
+            min_len = min(len(sig_i), len(sig_j))
+            if min_len == 0:
+                continue
+            containment = inter / min_len
+            if containment >= 0.6 and inter >= 3:
+                # Doublon sémantique → garder le plus officiel
+                score_i = is_official(opps[i].url)
+                score_j = is_official(opps[j].url)
+                if score_j > score_i:
+                    keep[i] = False
+                    logger.info(
+                        "semantic_dup_dropped",
+                        kept=opps[j].title[:50],
+                        dropped=opps[i].title[:50],
+                        jaccard=round(jacc, 2),
+                    )
+                    break
+                else:
+                    keep[j] = False
+                    logger.info(
+                        "semantic_dup_dropped",
+                        kept=opps[i].title[:50],
+                        dropped=opps[j].title[:50],
+                        jaccard=round(jacc, 2),
+                    )
+    return [o for i, o in enumerate(opps) if keep[i]]
+
 
 async def _process_one(
     raw,
@@ -166,7 +257,7 @@ async def main() -> dict:
     raw_opps = await run_all(collectors)
     logger.info("collection_done", n_raw=len(raw_opps))
 
-    # 4a. Dédup intra-run (titre + URL)
+    # 4a. Dédup intra-run — titre + URL exacts
     seen_keys: set[tuple] = set()
     deduped = []
     for r in raw_opps:
@@ -174,7 +265,14 @@ async def main() -> dict:
         if key not in seen_keys:
             seen_keys.add(key)
             deduped.append(r)
-    logger.info("intra_run_dedup", n=len(deduped))
+    logger.info("intra_run_dedup_exact", n=len(deduped))
+
+    # 4a-bis. Dédup intra-run — titres très similaires (même AO, sources différentes)
+    # Ex: "Tunisia receives €35.8m EU funding" (LinkedIn) == "EU boosts clean energy in
+    # Tunisia with €35.8 million grant" (EIB). On les fusionne en gardant la source la
+    # plus officielle (= URL la plus courte d'un domaine institutionnel).
+    deduped = _semantic_dedup(deduped)
+    logger.info("intra_run_dedup_semantic", n=len(deduped))
 
     # 4b. Pré-dédup contre la DB (évite de ré-analyser les AOs déjà connus)
     async with session_scope() as session:

@@ -334,6 +334,203 @@ def score_similarity(similarity_to_past_go: float, profile: dict[str, Any]) -> t
 
 
 # ============================================================
+# Pondération qualité de source — un analyste 30 ans sait :
+# une AO sur le portail officiel d'un DFI est BEAUCOUP plus fiable
+# qu'un article LinkedIn ou un agrégateur tiers.
+# ============================================================
+
+# Bonus : sources institutionnelles directes (= portail officiel d'un DFI)
+_OFFICIAL_SOURCE_DOMAINS = {
+    # DFIs primaires UGFS
+    "afdb.org": +8, "accf.afdb.org": +10, "projectsportal.afdb.org": +10,
+    "afd.fr": +8, "proparco.fr": +8,
+    "greenclimate.fund": +6,
+    "adaptation-fund.org": +6,
+    "convergence.finance": +10,        # partenaire confirmé
+    "climate-kic.org": +8, "eit.europa.eu": +8,
+    "mitigation-action.org": +8,
+    "ec.europa.eu": +6, "europa.eu": +6,
+    "ted.europa.eu": +8,                # appels d'offres officiels UE
+    "horizoneurope.ec.europa.eu": +8,
+    "kfw.de": +6, "kfw-entwicklungsbank.de": +6,
+    "ifc.org": +6, "worldbank.org": +6,
+    "undp.org": +5, "procurement.undp.org": +8,
+    "unep.org": +5,
+    "ebrd.com": +8, "ecepp.ebrd.com": +10,  # EBRD tenders
+    "get-invest.eu": +8,                 # PREO / GET.invest
+    "aecfafrica.org": +8,
+    "universalenergyfacility.org": +8,
+    # Sources Tunisie / Maghreb officielles
+    "apia.com.tn": +10, "apia.tn": +10,  # APIA agriculture Tunisie
+    "tunisieindustrie.tn": +8,
+    "cieif.org": +8,
+    "tunis.giz.de": +8,
+    # Sources LinkedIn UGFS-trusted
+    "linkedin.com/posts/funds-for-impact": +5,
+    "linkedin.com/posts/africagreenembassy": +5,
+    "linkedin.com/posts/blendedfinance-developmentfinance": +5,
+    "linkedin.com/posts/global-grants-and-opportunities-for-africa-gga": +4,
+    "linkedin.com/posts/entrepreneurs-catalyst-hub": +5,
+}
+
+# Pénalité : sources d'information (= articles de presse) où l'AO est mentionnée
+# mais n'est pas la source directe → souvent du bruit ou de l'ancien
+_NEWS_SOURCE_DOMAINS = {
+    "esi-africa.com": -8,                # site presse énergie Afrique
+    "financialafrik.com": -6,
+    "africanmanager.com": -4,             # presse Tunisie (parfois OK)
+    "findevgateway.org": -5,              # agrégat news
+    "devex.com": -3,                      # peut être OK si call direct
+    "africaagriculturalnetwork.com": -5,
+    "africanleadershipmagazine.co.uk": -8,
+    "news.fundsforngos.org": -5,
+    "opportunitiesforyouth.org": -8,      # cible jeunes, pas fund managers
+    "fundsforngos.org": -3,               # peut être OK
+    "federalgrantsinfo.com": -8,           # spam agrégat
+    "wearevuka.com": -8,                  # annuaire fonds (pas d'appels)
+    "tenderimpulse.com": -3,              # tenders publics (parfois OK)
+    "x.com": -6, "twitter.com": -6,        # généralement bruit
+    "scouts.yutori.com": -10,              # outil de veille tiers
+    "gouv.ci": -6,                         # site gouv pour news, pas AOs
+}
+
+
+def score_source_quality(url: str, source_kind: str | None = None) -> tuple[int, str]:
+    """
+    Ajustement déterministe basé sur la fiabilité de la source.
+    Un analyste UGFS expérimenté sait reconnaître :
+    - Source officielle (DFI, agence publique) → +5 à +10
+    - LinkedIn account spécialisé connu → +3 à +5
+    - Site presse / agrégateur → -3 à -10
+    - Tweet, scout tiers, page générique → -6 à -10
+
+    Retourne (delta_points, reason). Le delta s'ajoute APRÈS le scoring pondéré.
+    """
+    if not url:
+        return 0, "URL absente"
+    url_lower = url.lower()
+
+    # Test domaines officiels (match plus long en priorité)
+    for domain, delta in sorted(
+        _OFFICIAL_SOURCE_DOMAINS.items(), key=lambda x: -len(x[0])
+    ):
+        if domain in url_lower:
+            return delta, f"Source officielle {domain} (+{delta}pts)"
+
+    # Test domaines presse / agrégateur
+    for domain, delta in sorted(
+        _NEWS_SOURCE_DOMAINS.items(), key=lambda x: -len(x[0])
+    ):
+        if domain in url_lower:
+            return delta, f"Source presse/agrégat {domain} ({delta:+d}pts)"
+
+    # Aucun match : source inconnue, neutre
+    return 0, "Source inconnue (aucun ajustement)"
+
+
+# ============================================================
+# Estimation de l'effort de soumission (un vétéran 30 ans sait :
+# une RFP GCF = 6 semaines de travail, un EoI = 2 jours)
+# ============================================================
+
+def estimate_effort_days(
+    opp_type: str | None,
+    title: str,
+    eligibility: str,
+) -> tuple[int, str]:
+    """
+    Estime le nombre de jours-homme nécessaires pour soumettre.
+    Heuristique basée sur l'expérience UGFS — affinée par RL.
+
+    Returns: (days, level) où level = "low" | "medium" | "high"
+    """
+    if not opp_type:
+        return 5, "medium"
+
+    title_lower = (title or "").lower()
+    elig_lower = (eligibility or "").lower()
+
+    # Expression d'intérêt / Concept note → effort léger
+    if any(k in title_lower for k in ("expression of interest", "manifestation d'intérêt",
+                                       "concept note", "manifestation interet")):
+        return 3, "low"
+
+    # RFP / Mandate / GCF readiness → gros dossier
+    if any(k in title_lower for k in ("readiness", "rfp", "request for proposals",
+                                       "fund manager", "asset manager")):
+        return 25, "high"
+
+    # GCF / Adaptation Fund (toujours lourd)
+    if any(k in title_lower for k in ("green climate fund", "gcf", "adaptation fund")):
+        return 30, "high"
+
+    # Grant standard → moyen
+    if opp_type == "grant":
+        return 8, "medium"
+
+    # Advisory / TA → court
+    if opp_type in ("advisory", "technical_assistance"):
+        return 5, "medium"
+
+    # Asset management (mandate) → toujours lourd
+    if opp_type in ("asset_management", "mandate"):
+        return 20, "high"
+
+    return 5, "medium"
+
+
+# ============================================================
+# Estimation probabilité de gain (calibré sur historique UGFS)
+# ============================================================
+
+def estimate_win_probability(
+    score: int,
+    similarity_to_past_go: float,
+    has_priority_partner: bool,
+    vehicle_clear: bool,
+) -> tuple[int, str]:
+    """
+    Probabilité estimée de gagner cette AO (0-100%).
+    Un vétéran UGFS sait :
+    - Score >85 + partenaire connu + véhicule clair → ~25-35% (toujours compétitif)
+    - Score 60-85 → ~10-20%
+    - Score <60 → <5%
+
+    Calibration affinée par RL via feedback UGFS.
+    """
+    base = 0
+    if score >= 85: base = 25
+    elif score >= 75: base = 17
+    elif score >= 65: base = 10
+    elif score >= 50: base = 6
+    else: base = 2
+
+    # Bonus si très similaire à un GO passé (UGFS a déjà gagné un cas similaire)
+    if similarity_to_past_go >= 0.85:
+        base += 8
+    elif similarity_to_past_go >= 0.75:
+        base += 4
+
+    # Bonus partenaire connu (relation établie)
+    if has_priority_partner:
+        base += 5
+
+    # Bonus véhicule clairement adapté
+    if vehicle_clear:
+        base += 3
+
+    base = min(45, base)   # plafond réaliste
+
+    if base >= 25:
+        return base, "Forte (relation + match clair)"
+    if base >= 15:
+        return base, "Modérée (à investiguer)"
+    if base >= 8:
+        return base, "Faible (compétition probable)"
+    return base, "Très faible (en dehors du sweet spot)"
+
+
+# ============================================================
 # Score global
 # ============================================================
 
@@ -420,6 +617,13 @@ def compute_score(
             f"Pénalité -{penalty}pts : type inconnu (article/event/page générique probable)"
         )
 
+    # 3c. Ajustement qualité de source (un vétéran sait : APIA officiel vs LinkedIn random)
+    src_delta, src_why = score_source_quality(raw.url, getattr(raw, "source_kind", None))
+    if src_delta != 0:
+        score = max(0, min(100, score + src_delta))
+        breakdown["source_quality"] = float(src_delta)
+        rationale["source_quality"] = src_why
+
     # 4. Boost similarité — si similarité > seuil, on push de +10 pts
     if similarity_to_past_go >= settings.similarity_boost_threshold:
         score = min(100, score + settings.similarity_boost_points)
@@ -427,6 +631,26 @@ def compute_score(
         rationale["similarity_boost"] = (
             f"Boost +{settings.similarity_boost_points} (sim={similarity_to_past_go:.2f})"
         )
+
+    # 4b. Insights vétéran : effort estimé + probabilité de win
+    # (le score métier reste 0-100, ces métriques s'affichent à part dans l'Excel)
+    effort_days, effort_level = estimate_effort_days(
+        analyzed.opportunity_type.value if analyzed.opportunity_type else None,
+        analyzed.title,
+        analyzed.eligibility_summary,
+    )
+    has_known_partner = part_pts >= 70   # match partenaire prioritaire
+    vehicle_clear = veh_pts >= 70 and analyzed.vehicle_match is not None
+    win_prob, win_label = estimate_win_probability(
+        score=score,
+        similarity_to_past_go=similarity_to_past_go,
+        has_priority_partner=has_known_partner,
+        vehicle_clear=vehicle_clear,
+    )
+    breakdown["effort_days_estimate"] = float(effort_days)
+    breakdown["win_probability_pct"] = float(win_prob)
+    rationale["effort_estimate"] = f"Effort ~{effort_days}j ({effort_level})"
+    rationale["win_probability"] = f"{win_prob}% — {win_label}"
 
     # 5. DQ override
     if is_dq:
