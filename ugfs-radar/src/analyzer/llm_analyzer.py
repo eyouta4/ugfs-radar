@@ -102,6 +102,28 @@ def pre_filter(raw: RawOpportunity) -> bool:
     url_lower = (raw.url or "").lower()
     text_lower = (raw.raw_text or "")[:500].lower()
 
+    # === Liste noire UGFS (programmes confirmés NO_GO depuis historique) ===
+    try:
+        profile = get_ugfs_profile()
+        blacklist = profile.get("permanent_blacklist", {}).get("programs", [])
+        for entry in blacklist:
+            prog_name = entry.get("name", "").lower()
+            if not prog_name:
+                continue
+            # Match basique : nom du programme apparaît dans titre ou URL
+            # Strip parens content pour normaliser ("ESTDEV (Estonia Dev)" → "estdev")
+            core = prog_name.split("(")[0].strip()
+            if len(core) >= 4 and (core in title_lower or core in url_lower):
+                logger.info(
+                    "pre_filter_blacklist",
+                    title=title[:60],
+                    program=entry.get("name"),
+                    reason=entry.get("reason", "")[:80],
+                )
+                return True
+    except Exception:
+        pass
+
     # Titre trop court ou générique → faux positif garanti
     if len(title) < 15:
         logger.info("pre_filter_short_title", title=title)

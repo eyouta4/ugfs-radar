@@ -158,6 +158,38 @@ vehicles:
       - project preparation
       - blended finance climate
       - climate accelerator
+      # Teams discussion 2026 — nouveaux signaux confirmés
+      - bess
+      - battery storage
+      - utility scale solar
+      - kebili pv
+      - sogrea
+      - preo
+      - get.invest
+      - get-invest
+      - finance catalyst
+      - results-based financing
+      - rbf
+      - de-risking
+      - mini-grid program
+      - amp undp
+      - repp
+      - sefa
+      - pidg
+      - clean cooking alliance
+      - innovation scale-up fund
+      - dre africa
+      - distributed renewable energy
+      - ipp renouvelables
+      - ipp
+      - bgfa
+      - beyond the grid fund
+      - earf
+      - energy access relief
+      - esco
+      - productive use
+      - mrv carbone
+      - carbon mrv
 
   - name: "Blue Bond"
     code: "BLUE_BOND"
@@ -252,12 +284,14 @@ vehicles:
       - smart grid
       - energy digital
 
-  - name: "Musanada Fund"
+  - name: "Musanada Fund (1, 2 & Empower)"
     code: "MUSANADA"
-    focus: "infrastructure / public services / social housing / urban / PPP"
-    status: "active"
+    focus: "infrastructure / public services / social housing / urban / PPP / financement institutionnel banques tunisiennes"
+    status: "active — Musanada 2 et Empower en levée (BIAT, ATB, BNA, Amen Bank, Maghrébia prospectés)"
     keywords:
       - musanada
+      - musanada 2
+      - empower
       - infrastructure fund
       - social infrastructure
       - public infrastructure africa
@@ -269,6 +303,29 @@ vehicles:
       - ppp infrastructure
       - infrastructure financing
       - urban resilience
+
+  - name: "UGFS VC (Venture Capital)"
+    code: "UGFS_VC"
+    focus: "venture capital Tunisie / VC tech startups / accompagnement entrepreneurs"
+    status: "en cours de structuration (LP prospection en cours auprès de 30+ investisseurs Tunisie)"
+    # AOs liés : Sénégal FEVE cogestion (soumis 03/04/2026)
+    keywords:
+      - ugfs vc
+      - venture capital tunisia
+      - vc tunisie
+      - tech startup tunisia
+      - early stage tunisia
+      - seed funding tunisia
+
+  - name: "Fonds Impact Social (FIS)"
+    code: "FIS"
+    focus: "impact social / fonds blended / mentions BII, Grameen Foundation, blended finance"
+    status: "en cours de structuration — discussions BII, Grameen Foundation"
+    keywords:
+      - fonds impact social
+      - impact fund tunisia
+      - social impact fund
+      - blended finance impact
 
 # ============================================================
 # PARTENAIRES ET CO-INVESTISSEURS PRIORITAIRES
@@ -382,6 +439,173 @@ disqualification_rules:
     field: "type"
     examples:
       - "Semi-Finalists Announced: A4FM First Call → appel A4FM déjà fermé"
+
+# ============================================================
+# HISTORIQUE RÉEL DES SOUMISSIONS UGFS 2026
+# Source : Tableau de synthèse + discussion Teams (mars-avril 2026)
+# ============================================================
+historical_submissions:
+  - ao: "Convergence A4FM (Blended Finance Accelerator)"
+    vehicle: "TGF"
+    submission_date: "en cours"
+    deadline: "25/05/2026"
+    status: "PENDING"
+    url_pattern: "convergence.finance"
+    notes: "Pour le Tunisia Green Fund — blended finance"
+
+  - ao: "African Energy Futures (AEF)"
+    vehicle: "TGF"
+    submission_date: "fin janvier 2026"
+    status: "SUBMITTED"
+    url_pattern: "africanenergyfutures.org"
+    notes: "Pour le Tunisia Green Fund — énergie afrique"
+
+  - ao: "Entrepreneurs Catalytic Hub"
+    vehicle: "TGF"
+    submission_date: "20/02/2026"
+    status: "SUBMITTED"
+    url_pattern: "entrepreneurs-catalyst-hub"
+    notes: "Subventions 6.5M+ USD pour accélérer déploiement"
+
+  - ao: "APIA 2026 — Financements climatiques"
+    vehicle: "TGF + Blue Bond"
+    submission_date: "10/02/2026"
+    deadline: "02/10/2026"
+    status: "SUBMITTED"
+    url_pattern: "apia.com.tn"
+    notes: "Changement climatique — TGF & Blue Bond cofinancés"
+
+  - ao: "AgriFI"
+    vehicle: "SEED_OF_CHANGE"
+    submission_date: "04/02/2026"
+    status: "SUBMITTED"
+    url_pattern: "global-grants-and-opportunities"
+    notes: "Rolling — Seed of Change"
+
+  - ao: "Mitigation Action Facility"
+    vehicle: "TGF"
+    submission_date: "22/02/2026"
+    deadline: "25/02/2026"
+    status: "SUBMITTED"
+    url_pattern: "mitigation-action.org"
+    notes: "Projets atténuation climat énergie transport"
+
+  - ao: "Climate KIC ClimAccelerator"
+    vehicle: "TGF"
+    submission_date: "21/02/2026"
+    deadline: "28/02/2026"
+    status: "SUBMITTED"
+    url_pattern: "climate-kic.org"
+    notes: "Accélération SSOs concentré climat"
+
+  - ao: "Fund Launch Partners"
+    vehicle: "TGF"
+    submission_date: "26/02/2026"
+    status: "REFUSED"
+    url_pattern: "bridger-pennington"
+    notes: "RÉPONSE NÉGATIVE reçue — Emerging Fund Manager Submission"
+
+  - ao: "Fund Launch Partners (2e tentative)"
+    vehicle: "NEW_ERA"
+    submission_date: "11/03/2026"
+    status: "REFUSED"
+    url_pattern: "bridger-pennington"
+    notes: "RÉPONSE NÉGATIVE reçue — NEW ERA FUND"
+
+  - ao: "SDG Impact Finance Initiative (SIFI)"
+    vehicle: "BLUE_BOND"
+    submission_date: "11/03/2026"
+    deadline: "03/12/2026"
+    status: "SUBMITTED"
+    url_pattern: "sdg-impact-finance"
+    notes: "Résilience pour Blue Bond"
+
+  - ao: "CIEIF Grant 2026"
+    vehicle: "TGF"
+    submission_date: "14/03/2026"
+    deadline: "15/03/2026"
+    status: "SUBMITTED"
+    url_pattern: "cieif.org"
+    notes: "Subventions climat"
+
+  - ao: "Opportunité Sénégal — FEVE Cogestion"
+    vehicle: "UGFS"
+    submission_date: "03/04/2026"
+    status: "SUBMITTED"
+    url_pattern: "tdr-fonds-energie-verte"
+    notes: "Cogestion fonds FEVE Sénégal — UGFS direct"
+
+  - ao: "Adaptation Fund"
+    vehicle: "TGF"
+    submission_date: "en cours"
+    status: "PENDING"
+    url_pattern: "funds-for-impact"
+    notes: "Dossier en cours avec partenaire OSS"
+
+  - ao: "Common Fund for Commodities (CFC) 28th Call"
+    vehicle: "SEED_OF_CHANGE"
+    submission_date: "04/01/2026"
+    deadline: "01/04/2026"
+    status: "SUBMITTED"
+    url_pattern: "common-fund-for-commodities"
+    notes: "Climate solutions, sustainable supply chains"
+
+  - ao: "Improving climate and weather models for Africa"
+    vehicle: "MSF"
+    submission_date: "manqué"
+    deadline: "15/04/2026"
+    status: "MISSED_DEADLINE"
+    notes: "Pas pu être dans les délais — leçon : alertes plus précoces"
+
+  - ao: "JIF 2026 / AEDIB"
+    vehicle: "via Wikistartup"
+    deadline: "30/04/2026"
+    status: "NOT_LEAD"
+    notes: "Pas chef de file — association possible mais pas porteur"
+
+# ============================================================
+# PROGRAMMES NO_GO CONNUS (à exclure systématiquement)
+# Source : analyse historique UGFS — non éligibles ou hors scope
+# ============================================================
+permanent_blacklist:
+  programs:
+    - name: "ESTDEV (Estonia Development)"
+      reason: "Géographies hors scope UGFS (Botswana/Kenya/Namibie...)"
+    - name: "AfDB Boost Africa"
+      reason: "Programme pour startups, non éligible fund manager"
+    - name: "Grand Challenges Africa (AESA)"
+      reason: "R&D scientifique, hors profil UGFS"
+    - name: "DRK Foundation"
+      reason: "ONG social enterprises, pas pour fund manager"
+    - name: "Renew Venture Lab"
+      reason: "Startups Afrique uniquement, pas fund manager"
+    - name: "Sabou Capital"
+      reason: "Investit dans secondary regions Afrique — UGFS n'est pas dans leur scope"
+    - name: "Honnold Foundation"
+      reason: "Solar communautaire ONG uniquement"
+    - name: "MADICA"
+      reason: "Programme startups early-stage uniquement"
+    - name: "YCJF (Youth Climate Justice Fund)"
+      reason: "Groupes émergents dirigés par des jeunes uniquement"
+    - name: "Visa Grant Program YSpace"
+      reason: "Canada uniquement"
+    - name: "AFD Digital Energy Challenge"
+      reason: "Non éligible UGFS (déjà vérifié)"
+    - name: "Smart Africa RFP Digital Entrepreneurship"
+      reason: "Consultant individuel, pas fund manager"
+    - name: "Comcast Innovation Fund"
+      reason: "Open-source uniquement + deadline dépassée"
+    - name: "Kinetic Publishing"
+      reason: "Jeux vidéo / hors scope"
+    - name: "Keeling Curve Prize"
+      reason: "Climate solutions individuelles, pas fund manager"
+    - name: "Finnpartnership BPS"
+      reason: "Partenaires basés en pays éligibles aide Finlande spécifiques"
+    - name: "Sustainability Open Innovation Challenge"
+      reason: "Hors scope UGFS"
+
+  llm_decision: "NO_GO"
+  llm_reason: "Programme dans la liste noire UGFS (historique de non-éligibilité confirmée)"
 
 # ============================================================
 # SIGNAUX DE GO — PATTERNS HISTORIQUES UGFS (RÉELS)
