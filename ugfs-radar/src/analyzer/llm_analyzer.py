@@ -323,12 +323,11 @@ HEURISTIQUES VÉTÉRAN (30 ans d'expérience UGFS)
   • "Asset managers, financial intermediaries" → GO probable
   • "Fund of funds, blended finance vehicles" → GO probable
 
-**Sur le ticket size** :
-  • <100K USD → souvent grant TA, OK si stratégique (Climate KIC, CIEIF)
-  • 100K-1M USD → sweet spot grant développement véhicule
-  • 1M-10M USD → sweet spot mandate / advisory
-  • 10M-50M USD → mandate gros (rare mais lucratif)
-  • >50M USD → souvent appel pour grands GPs établis (Cygnum, Phatisa) → BORDERLINE
+**Sur le ticket size (CONSIGNE UGFS 18/05/2026)** :
+  ⚠️ PAS de filtre min/max sur le ticket. UGFS répond à TOUTES les tailles :
+  grants TA de 50K USD, subventions multiples natures, financements, mandats, etc.
+  Ne JAMAIS rejeter une AO sur la seule base du ticket.
+  Le critère décisif est : **NATURE de l'opportunité × ADÉQUATION véhicule × INTÉRÊT stratégique**.
 
 **Sur le timing** :
   • Appel ouvert depuis >6 mois sans deadline → souvent rolling permanent (vérifier qualité)
@@ -895,7 +894,9 @@ def _coerce(data: dict) -> dict:
         data["ticket_size_usd"] = int(digits) if digits else None
 
     vm = data.get("vehicle_match")
-    valid_vehicles = {"TGF", "BLUE_BOND", "SEED_OF_CHANGE", "NEW_ERA", "MUSANADA"}
+    # NB : FIS n'est PAS un véhicule UGFS (c'est une typologie, clarifié 18/05/2026).
+    # UGFS_VC ajouté comme véhicule en cours de structuration.
+    valid_vehicles = {"TGF", "BLUE_BOND", "SEED_OF_CHANGE", "NEW_ERA", "MUSANADA", "UGFS_VC"}
     if vm and vm.upper() not in valid_vehicles:
         data["vehicle_match"] = None
     elif vm:

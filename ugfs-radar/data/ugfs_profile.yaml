@@ -80,13 +80,43 @@ geographies:
     - USA only
 
 # === Ticket size ===
+# CLARIFICATION UGFS (18/05/2026) : pas de limite fixe min/max.
+# Les opportunités ciblées peuvent couvrir plusieurs formes de financement
+# ou d'appui : subventions de différentes natures, assistance technique,
+# financements, ou autres mécanismes de soutien.
+# → L'agent ne filtre PAS sur un ticket prédéfini. Il analyse la NATURE
+#   de l'opportunité, son adéquation avec les véhicules, et son intérêt
+#   stratégique pour UGFS.
 ticket_size:
   no_restriction: true
-  sweet_spot_min_usd: 100_000           # même les petits grants (CIEIF, YCJF) sont analysés
-  sweet_spot_max_usd: 50_000_000
+  filter_by_ticket: false               # ne pas filtrer/noter sur ce critère
+  sweet_spot_min_usd: null              # désactivé
+  sweet_spot_max_usd: null              # désactivé
   notes: >
-    UGFS répond à des appels de 100K USD (Climate KIC, CIEIF) comme à des
-    projets de plusieurs millions (SIFI, APIA/GCF, Kébili PV+BESS 300MW).
+    UGFS répond à des appels de toutes tailles, de la subvention TA de
+    50K USD à un mandat de plusieurs dizaines de millions. Le ticket
+    n'est PAS un critère de scoring : c'est la nature, l'adéquation
+    véhicule, et l'intérêt stratégique qui priment.
+
+# === Typologies d'opportunités acceptées (FIS = typologie, pas véhicule) ===
+opportunity_typologies:
+  - code: "GRANT"
+    label: "Subvention (différentes natures)"
+    examples: ["climate grant", "research grant", "innovation grant"]
+  - code: "TA"
+    label: "Assistance Technique"
+    examples: ["technical assistance", "advisory mandate", "TA portfolio"]
+  - code: "FINANCING"
+    label: "Financement direct"
+    examples: ["debt financing", "equity investment", "blended capital"]
+  - code: "FIS"
+    label: "Fonds Impact Social (typologie)"
+    notes: "FIS désigne un type de fonds (impact social/blended), pas un véhicule UGFS distinct"
+  - code: "ASSET_MGMT"
+    label: "Asset Management / Mandate de gestion"
+  - code: "OTHER_SUPPORT"
+    label: "Autres mécanismes de soutien"
+    examples: ["accelerator", "incubator", "matchmaking", "guarantee"]
 
 # === Langues de soumission ===
 languages:
@@ -317,15 +347,11 @@ vehicles:
       - early stage tunisia
       - seed funding tunisia
 
-  - name: "Fonds Impact Social (FIS)"
-    code: "FIS"
-    focus: "impact social / fonds blended / mentions BII, Grameen Foundation, blended finance"
-    status: "en cours de structuration — discussions BII, Grameen Foundation"
-    keywords:
-      - fonds impact social
-      - impact fund tunisia
-      - social impact fund
-      - blended finance impact
+# NOTE — FIS (Fonds Impact Social) :
+# UGFS a clarifié le 18/05/2026 que FIS n'est PAS un véhicule UGFS distinct,
+# mais une TYPOLOGIE / catégorie de fonds (= type d'instrument).
+# On le traite comme un type/sous-thématique, pas comme un vehicle_match.
+# Voir section `opportunity_typologies` ci-dessous.
 
 # ============================================================
 # PARTENAIRES ET CO-INVESTISSEURS PRIORITAIRES

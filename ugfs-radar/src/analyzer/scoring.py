@@ -288,19 +288,21 @@ def score_ticket(
     profile: dict[str, Any],
 ) -> tuple[int, str]:
     """
-    Score ticket : 100 si dans la sweet spot, 50 si hors mais pas de restriction
-    UGFS, 0 si pas d'info exploitable.
+    Score ticket : neutralisé conformément à la clarification UGFS du 18/05/2026.
+    UGFS ne souhaite PAS filtrer/scorer sur un ticket prédéfini : les opportunités
+    sont analysées sur leur nature, adéquation véhicule et intérêt stratégique.
+    On retourne 100/100 systématiquement → le poids de ce critère devient neutre.
     """
     ts = profile.get("ticket_size", {})
+    if ts.get("filter_by_ticket") is False:
+        return 100, "Ticket non-filtrant (consigne UGFS : analyse par nature/véhicule)"
+
+    # Fallback legacy si filter_by_ticket pas défini
     if ts.get("no_restriction"):
         if ticket_size_usd is None:
-            return 50, "Ticket non précisé"
-        smin = ts.get("sweet_spot_min_usd") or 0
-        smax = ts.get("sweet_spot_max_usd") or 10**12
-        if smin <= ticket_size_usd <= smax:
-            return 100, f"Ticket {ticket_size_usd:,} USD ∈ sweet spot"
-        return 50, f"Ticket {ticket_size_usd:,} USD hors sweet spot mais acceptable"
-    return 50, "Pas de restriction ticket"
+            return 75, "Ticket non précisé"
+        return 75, f"Ticket {ticket_size_usd:,} USD (neutre)"
+    return 75, "Pas de restriction ticket"
 
 
 def score_language(languages: list[str], profile: dict[str, Any]) -> tuple[int, str]:

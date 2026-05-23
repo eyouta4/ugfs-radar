@@ -72,8 +72,14 @@ async def daily_urgent_check():
     """Vérifie quotidiennement les urgents et envoie alertes Teams + email deadline."""
     from src.delivery import send_urgent_alerts
     from src.delivery.email_sender import send_urgent_deadline_email
-    from src.storage.database import session_scope
+    from src.storage.database import init_db, session_scope
     from src.storage.repository import OpportunityRepo
+    # Garantir que les migrations DB sont appliquées avant la query
+    # (au cas où le scheduler aurait raté son init au démarrage).
+    try:
+        await init_db()
+    except Exception as e:
+        logger.warning("daily_urgent_init_db_failed", error=str(e))
     try:
         async with session_scope() as session:
             repo = OpportunityRepo(session)
@@ -145,6 +151,18 @@ async def monthly_recalibrate():
 
 async def main():
     settings = get_settings()
+
+    # CRITIQUE : appliquer les migrations DB au démarrage du scheduler.
+    # Sans ça, daily_urgent_check (lancé à 7h) plante avec UndefinedColumnError
+    # si la DB n'a pas encore reçu les nouvelles colonnes (ex: last_emailed_at).
+    from src.storage.database import init_db
+    try:
+        await init_db()
+        logger.info("scheduler_db_migrations_applied")
+    except Exception as e:
+        logger.exception("scheduler_db_init_failed", error=str(e))
+        # On continue : les jobs eux-mêmes feront init_db si besoin.
+
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
 
     # ── Run hebdo principal (lundi) ─────────────────────────────────────
