@@ -260,6 +260,10 @@ class OpportunityRepo:
         Utile après une mise à jour des règles de filtrage : les AOs scorées
         avant le fix restaient en DB avec leur ancien (mauvais) score.
 
+        Skip systématiquement :
+          - source_kind = MANUAL (URLs manual://, données seed historiques)
+          - URLs non-http (ne peuvent pas passer le validateur Pydantic)
+
         Args:
             pre_filter_fn: fonction(RawOpportunity-like) → True si NO-GO
             cutoff_days: ne touche que les opps des N derniers jours
@@ -274,20 +278,28 @@ class OpportunityRepo:
             .where(Opportunity.discovered_at >= cutoff)
             .where(Opportunity.status != "NO_GO")
             .where(Opportunity.client_decision.is_(None))
+            # Skip les opps avec source_kind MANUAL (seed historique avec URLs manual://)
+            .where(Opportunity.source_kind != "manual")
         )
         result = await self.session.execute(stmt)
         opps = result.scalars().all()
 
         n_demoted = 0
+        n_skipped = 0
         for opp in opps:
+            # Skip URLs non-http (impossible de passer le validateur Pydantic)
+            opp_url = opp.url or ""
+            if not (opp_url.startswith("http://") or opp_url.startswith("https://")):
+                n_skipped += 1
+                continue
             try:
                 # Recrée un RawOpportunity-like pour le filtre
                 raw = RawOpportunity(
-                    title=opp.title,
-                    url=opp.url,
+                    title=opp.title or "x",
+                    url=opp_url,
                     source=opp.source or "rerun",
                     source_kind=SourceKind(opp.source_kind) if opp.source_kind else SourceKind.MANUAL,
-                    raw_text=(opp.summary_executive or "")[:500] or "rerun-text",
+                    raw_text=(opp.summary_executive or "")[:500] or "rerun-text-padding-min-20-chars",
                 )
                 if pre_filter_fn(raw):
                     # Pré-filtre rejette → status NO_GO, score 0
@@ -295,9 +307,13 @@ class OpportunityRepo:
                     opp.score = 0
                     n_demoted += 1
             except Exception as e:
-                logger.warning("reapply_filter_err", opp_id=opp.id, error=str(e)[:120])
+                # Silencieux : log debug seulement (ne pas spammer warnings)
+                logger.debug("reapply_filter_skip", opp_id=opp.id, error=str(e)[:100])
+                n_skipped += 1
                 continue
         await self.session.flush()
+        if n_skipped:
+            logger.info("reapply_filter_summary", demoted=n_demoted, skipped=n_skipped)
         return n_demoted
 
     async def get_known_urls(self, cutoff_days: int = 30) -> set[str]:

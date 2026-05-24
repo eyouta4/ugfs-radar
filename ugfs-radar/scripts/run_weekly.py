@@ -132,7 +132,7 @@ def _semantic_dedup(opps: list) -> list:
                         "semantic_dup_dropped",
                         kept=opps[j].title[:50],
                         dropped=opps[i].title[:50],
-                        jaccard=round(jacc, 2),
+                        containment=round(containment, 2),
                     )
                     break
                 else:
@@ -141,7 +141,7 @@ def _semantic_dedup(opps: list) -> list:
                         "semantic_dup_dropped",
                         kept=opps[i].title[:50],
                         dropped=opps[j].title[:50],
-                        jaccard=round(jacc, 2),
+                        containment=round(containment, 2),
                     )
     return [o for i, o in enumerate(opps) if keep[i]]
 
