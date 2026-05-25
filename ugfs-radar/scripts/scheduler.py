@@ -48,13 +48,17 @@ async def sunday_failsafe_job():
     from sqlalchemy import select
 
     await init_db()
+    from datetime import datetime
     today = date.today()
     wednesday = today - timedelta(days=(today.weekday() - 2) % 7)   # mercredi de cette semaine
+    # IMPORTANT : convertir en datetime (timestamp), pas en string ISO,
+    # sinon PostgreSQL lève UndefinedFunctionError (timestamp vs varchar)
+    wednesday_dt = datetime.combine(wednesday, datetime.min.time())
 
     async with session_scope() as session:
         stmt = (
             select(Run)
-            .where(Run.started_at >= wednesday.isoformat())
+            .where(Run.started_at >= wednesday_dt)
             .where(Run.status == "OK")
         )
         result = await session.execute(stmt)

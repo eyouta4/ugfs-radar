@@ -220,6 +220,32 @@ vehicles:
       - productive use
       - mrv carbone
       - carbon mrv
+      # Keywords confirmés Teams 2026 (complétés post-audit 25/05)
+      - aecf
+      - africa enterprise challenge fund
+      - jif
+      - jif 2026
+      - joint innovation facility
+      - aedib
+      - sibc
+      - sibc 2026
+      - sibc afd
+      - gsma
+      - gsma innovation fund
+      - gsma green transition
+      - open fund
+      - women-led energy
+      - carbon trust
+      - clean energy catalytic funding
+      - leap-re
+      - leap-se
+      - tataouine
+      - ebrd tunisia
+      - timbuktoo
+      - timbuktoo agritech
+      - cieif
+      - climate intervention environmental impact fund
+      - ndcpartnership
 
   - name: "Blue Bond"
     code: "BLUE_BOND"

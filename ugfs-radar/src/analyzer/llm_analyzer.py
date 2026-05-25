@@ -57,13 +57,32 @@ _NOGO_URL_PATTERNS = [
 ]
 
 # Fragments de chemin d'URL qui indiquent une page non-actionnable
-# (page pays, webinaire, événement, catégorie générique)
+# (page pays, webinaire, événement, catégorie générique, news institutionnelles)
 _NOGO_URL_PATH_FRAGMENTS = [
     "/webinars/", "/webinar/",               # conférences/webinaires
     "/events/event/", "pathfinder.org/events",  # agendas événements
     "/country/",                             # pages pays Adaptation Fund, etc.
     "wearevuka.com/investor-projects/",      # annuaire fonds
     "federalgrantsinfo.com",                 # site agrégateur non spécialisé
+    # NEWS / press releases institutionnelles (pas des appels actionnables)
+    "afdb.org/news-and-events/press-releases",   # AfDB press release
+    "afdb.org/en/news-and-events/press-releases",
+    "afdb.org/fr/news-and-events/press-releases",
+    "afdb.org/topics-and-sectors/initiatives-partnerships",  # page institutionnelle
+    "afdb.org/en/topics-and-sectors/initiatives-partnerships",
+    "afdb.org/fr/topics-and-sectors/initiatives-partnerships",
+    "icafrica.org/fr/project-preparation/the-fund-finder",   # listing fund finder
+    "icafrica.org/en/project-preparation/the-fund-finder",
+    "apia.com.tn/actualites/detail",         # detail news APIA (pas le PDF officiel)
+    # Pages "jobs / consultant individuel" — NO_GO pour fund manager
+    "devex.com/jobs/",                        # consultant individuel
+    "devex.com/news/",                        # news Devex
+    "/jobs/",                                 # generic /jobs/ path
+    "/careers/",                              # carrières
+    # Categories d'instructions, pas l'appel lui-même
+    "/guidelines",                            # "Guidelines for Grant Applicants"
+    # Pages Instagram (réseaux sociaux)
+    "instagram.com/",
 ]
 
 # Patterns dans le TITRE qui signalent un article de presse ou annonce non-actionnable
@@ -81,6 +100,32 @@ _LIKELY_NEWS_TITLE_PATTERNS = [
     "announces the ",
     " governance: ",
     "gouvernance climatique",
+    # Fellowships / individual consultants → NO_GO pour fund manager
+    "fellowship empowers",          # AfDB Fellowship
+    "fellowship for emerging",      # Fellowship individuel
+    "request for proposals – mini grid consultant",  # consultant individuel
+    "rfp – mini grid consultant",
+    "request for proposals - mini grid consultant",
+    "consultant for ",              # consultant
+    "consultancy firm",             # cabinet conseil individuel
+    "recruitment of consultancy",
+    # Aggrégats d'opportunités (pas un appel direct mais informatif)
+    "20+ opportunities",
+    "major grant opportunities for africa",
+    "new agribusiness & agritech funding opportunities",
+    "african ngo funding opportunities",
+    "top funding opportunities",
+    # Annonces accreditation/membership (pas un appel)
+    "accreditation",
+    "accreditee par",
+    "accreditation du firca",
+    "accreditation au fonds",
+    "obtient l'accreditation",
+    # Pages de gestion / submission interne (pas un appel public)
+    "submission manager",           # "Convergence Submission Manager" = interface pas un appel
+    # Guidelines / FAQ / instructions
+    "guidelines for grant applicants",
+    "frequently asked questions",
 ]
 
 
@@ -308,9 +353,24 @@ Output : JSON strict (pas de markdown), commencer par `analyst_reasoning` (étap
   - "GCF Regional Dialogue MENA" → unknown, NO_GO (événement)
   - "Semi-Finalists Announced: A4FM" → unknown, NO_GO (appel fermé)
   - "Country – Adaptation Fund /country/RG/" → unknown, NO_GO (page pays)
-  - "Appel à Projets APIA Margines 2026" → grant, peut être GO
+  - "La Banque africaine de développement et le Fonds vert" (afdb.org/press-releases) → unknown, NO_GO
+  - "Green Climate Fund" (afdb.org/topics-and-sectors/initiatives-partnerships) → unknown, NO_GO
+  - "Fonds vert pour le climat - ICA" (icafrica.org fund finder) → unknown, NO_GO
+  - "Financements climatiques du Fonds Vert" (apia.com.tn/actualites/detail) → unknown, NO_GO
+  - "RFP – Mini Grid Consultant" (devex.com/jobs/) → unknown, NO_GO (consultant individuel)
+  - "AfDB Fellowship Empowers ..." → unknown, NO_GO (fellowship individuel)
+  - "Guidelines for Grant Applicants" → unknown, NO_GO (instructions ≠ appel)
+  - "20+ Opportunities with $600M+" → unknown, NO_GO (liste agrégée)
+  - "Convergence Submission Manager" → unknown, NO_GO (interface ≠ appel)
+  - "L'APIA accréditée par le Fonds Vert" → unknown, NO_GO (annonce accreditation)
+  --- VRAIS GO actionnables :
+  - "Appel à Projets APIA Margines 2026" (apia.com.tn PDF officiel) → grant, GO
   - "Call for proposals | ACCF Portal" → grant, GO
   - "Blended Finance Accelerator for Fund Managers — Apply" → grant, GO
+  - "SOGREA Opens Call for Developers" → grant, GO
+  - "EEP Africa 2026 Call for Proposals" → grant, GO
+  - "LEAP-SE Call 2026 - LEAP-RE" → grant, GO
+  - "Tunisia: Tataouine BESS and Solar" (EBRD tender) → financing, GO
 
 ═══════════════════════════════════════════════════════
 HEURISTIQUES VÉTÉRAN (30 ans d'expérience UGFS)
